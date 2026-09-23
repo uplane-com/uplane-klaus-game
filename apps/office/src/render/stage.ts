@@ -1,0 +1,96 @@
+import * as THREE from 'three';
+import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
+
+/** Renderer, isometric-style orthographic camera, controls and lights. */
+export class Stage {
+  readonly renderer: THREE.WebGLRenderer;
+  readonly scene = new THREE.Scene();
+  readonly camera: THREE.OrthographicCamera;
+  readonly controls: MapControls;
+  readonly sun: THREE.DirectionalLight;
+  readonly hemi: THREE.HemisphereLight;
+  private readonly viewHeight = 70;
+
+  constructor(container: HTMLElement, center: THREE.Vector3) {
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    container.appendChild(this.renderer.domElement);
+
+    this.scene.background = new THREE.Color('#bcd3e6');
+    this.scene.fog = new THREE.Fog('#bcd3e6', 260, 520);
+
+    const aspect = container.clientWidth / container.clientHeight;
+    const h = this.viewHeight / 2;
+    this.camera = new THREE.OrthographicCamera(-h * aspect, h * aspect, h, -h, 0.1, 1000);
+    this.camera.position.copy(center).add(new THREE.Vector3(-55, 95, 95));
+    this.camera.zoom = 1.1;
+    this.camera.updateProjectionMatrix();
+
+    this.controls = new MapControls(this.camera, this.renderer.domElement);
+    this.controls.target.copy(center);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.12;
+    this.controls.screenSpacePanning = false;
+    this.controls.minZoom = 0.45;
+    this.controls.maxZoom = 12;
+    this.controls.minPolarAngle = 0.25;
+    this.controls.maxPolarAngle = 1.2;
+    this.controls.zoomToCursor = true;
+    this.controls.update();
+
+    this.hemi = new THREE.HemisphereLight('#f4f7ff', '#8a8f7a', 1.4);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight('#fff4e0', 2.3);
+    this.sun.position.copy(center).add(new THREE.Vector3(-45, 90, 35));
+    this.sun.target.position.copy(center);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(4096, 4096);
+    const sc = this.sun.shadow.camera;
+    sc.left = -80;
+    sc.right = 80;
+    sc.top = 70;
+    sc.bottom = -70;
+    sc.near = 1;
+    sc.far = 260;
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.03;
+    this.scene.add(this.sun, this.sun.target);
+
+    window.addEventListener('resize', () => this.resize(container));
+  }
+
+  private resize(container: HTMLElement) {
+    const w = container.clientWidth;
+    const hgt = container.clientHeight;
+    const aspect = w / hgt;
+    const h = this.viewHeight / 2;
+    this.camera.left = -h * aspect;
+    this.camera.right = h * aspect;
+    this.camera.top = h;
+    this.camera.bottom = -h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, hgt);
+  }
+
+  /** Keep the camera orbit but move its focus to a point (follow mode). */
+  focus(x: number, z: number, lambda: number, dt: number) {
+    const t = this.controls.target;
+    const k = 1 - Math.exp(-lambda * dt);
+    const dx = (x - t.x) * k;
+    const dz = (z - t.z) * k;
+    t.x += dx;
+    t.z += dz;
+    this.camera.position.x += dx;
+    this.camera.position.z += dz;
+  }
+
+  render() {
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  }
+}

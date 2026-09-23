@@ -1,0 +1,12 @@
+{
+  "name": "uplane-office",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @office/web dev",
+    "dev:api": "pnpm --filter @office/api dev",
+    "build": "pnpm --filter @office/web build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "packageManager": "pnpm@10.33.4"
+}

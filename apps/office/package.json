@@ -1,0 +1,23 @@
+{
+  "name": "@office/web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@recast-navigation/three": "^0.43.1",
+    "recast-navigation": "^0.43.1",
+    "three": "^0.186.0",
+    "@office/events": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
