@@ -71,7 +71,7 @@ send nothing for `STALE_AFTER_SECONDS` are marked stopped automatically.
 ```ts
 import { OfficeClient } from '@office/events';
 
-const office = new OfficeClient({ url: 'https://uplane-office.fly.dev', apiKey: process.env.OFFICE_KEY! });
+const office = new OfficeClient({ url: 'https://uplane-klaus-game.fly.dev', apiKey: process.env.OFFICE_KEY! });
 const me = office.agent({ id: runId, name: 'Mia', role: 'codegen' });
 me.started();
 me.task({ id: 'task-1', title: 'Fix login redirect', pipeline: 'code', stage: 'codegen' });
@@ -105,7 +105,7 @@ fly ssh console -C "node_modules/.bin/tsx scripts/keys.ts create tv read"
 ```
 
 The API serves the visualisation too, so a TV only needs
-`https://uplane-office.fly.dev/?key=<read key>&kiosk`.
+`https://uplane-klaus-game.fly.dev/?key=<read key>&kiosk`.
 
 ## Assets
 

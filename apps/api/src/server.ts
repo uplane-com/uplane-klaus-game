@@ -20,8 +20,18 @@ const app = new Hono();
 
 app.use('/v1/*', cors({ origin: env.corsOrigins.length ? env.corsOrigins : '*', allowHeaders: ['authorization', 'content-type', 'last-event-id'] }));
 
+/** Database setup state; the server listens right away and retries the DB until it works. */
+let ready = false;
+let bootError: string | null = null;
+
 app.get('/health', async (c) => {
-  await sql`select 1`;
+  if (env.missing.length) return c.json({ ok: false, error: `Missing environment variable(s): ${env.missing.join(', ')}` }, 503);
+  if (!ready) return c.json({ ok: false, error: bootError ?? 'Connecting to the database…' }, 503);
+  try {
+    await sql`select 1`;
+  } catch (err) {
+    return c.json({ ok: false, error: `Database: ${err instanceof Error ? err.message : err}` }, 503);
+  }
   return c.json({ ok: true, cursor: broadcaster.cursor, viewers: broadcaster.viewers });
 });
 
@@ -106,10 +116,31 @@ if (env.staticDir) {
   app.get('*', serveStatic({ root: env.staticDir, path: 'index.html' }));
 }
 
-await migrate();
-await broadcaster.start();
-startSweeper();
 serve({ fetch: app.fetch, port: env.port }, (info) => console.log(`office api listening on :${info.port}`));
+
+// Migrate + start the live stream; keep retrying so a DB hiccup at boot doesn't take the app down.
+async function boot() {
+  if (env.missing.length) {
+    console.error(`office api: missing environment variable(s) ${env.missing.join(', ')}; set them (fly secrets set ...) and restart`);
+    return;
+  }
+  for (;;) {
+    try {
+      await migrate();
+      await broadcaster.start();
+      startSweeper();
+      ready = true;
+      bootError = null;
+      console.log('office api: database ready');
+      return;
+    } catch (err) {
+      bootError = `Database setup failed: ${err instanceof Error ? err.message : err}`;
+      console.error(`office api: ${bootError}; retrying in 5s`);
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  }
+}
+void boot();
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {

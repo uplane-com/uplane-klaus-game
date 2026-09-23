@@ -1,7 +1,7 @@
-# fly launch --no-deploy --copy-config  (then set secrets, see README)
-app = "uplane-office"
-# Pick the region closest to your Neon database (e.g. fra ↔ aws-eu-central-1).
-primary_region = "fra"
+# Fly app (created via Fly Launch). Secrets: DATABASE_URL, DATABASE_URL_UNPOOLED (see README).
+app = "uplane-klaus-game"
+# Best: the region closest to your Neon database (e.g. fra ↔ aws-eu-central-1).
+primary_region = "sjc"
 
 [build]
   dockerfile = "Dockerfile"

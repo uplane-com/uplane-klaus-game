@@ -1,13 +1,12 @@
 /** Runtime configuration (see .env.example). */
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing environment variable ${name}`);
-  return v;
-}
+// Missing settings don't crash the process: the server still starts and /health says what's wrong.
+const databaseUrl = process.env.DATABASE_URL ?? '';
 
 export const env = {
-  databaseUrl: required('DATABASE_URL'),
-  databaseUrlUnpooled: process.env.DATABASE_URL_UNPOOLED || required('DATABASE_URL'),
+  databaseUrl,
+  databaseUrlUnpooled: process.env.DATABASE_URL_UNPOOLED || databaseUrl,
+  /** Configuration problems reported by /health. */
+  missing: databaseUrl ? [] : ['DATABASE_URL'],
   port: Number(process.env.PORT ?? 8080),
   staleAfterSeconds: Number(process.env.STALE_AFTER_SECONDS ?? 900),
   publicRead: process.env.PUBLIC_READ === 'true',

@@ -7,7 +7,10 @@ const ssl = (url: string) => (/sslmode=(require|verify)/.test(url) || url.includ
  * Query pool. Neon's pooled endpoint runs PgBouncer in transaction mode, so
  * prepared statements are disabled.
  */
-export const sql = postgres(env.databaseUrl, {
+// postgres() connects lazily, so a placeholder URL is fine until DATABASE_URL is set.
+const PLACEHOLDER = 'postgres://unset@127.0.0.1:1/unset';
+
+export const sql = postgres(env.databaseUrl || PLACEHOLDER, {
   ssl: ssl(env.databaseUrl),
   max: 10,
   prepare: false,
@@ -16,7 +19,7 @@ export const sql = postgres(env.databaseUrl, {
 });
 
 /** Dedicated direct connection for LISTEN/NOTIFY (not possible through PgBouncer). */
-export const listener = postgres(env.databaseUrlUnpooled, {
+export const listener = postgres(env.databaseUrlUnpooled || PLACEHOLDER, {
   ssl: ssl(env.databaseUrlUnpooled),
   max: 1,
   onnotice: () => {},
