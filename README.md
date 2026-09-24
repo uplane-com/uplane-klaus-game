@@ -89,6 +89,23 @@ await office.close(); // flush on shutdown
 
 Long idle periods: call `me.heartbeat()` every few minutes so the agent isn't timed out.
 
+### GitHub Actions as characters
+
+`POST /v1/github` takes the org webhook (events `workflow_job` and `deployment_status`,
+content type JSON, secret = `GITHUB_WEBHOOK_SECRET`). Every job becomes a character:
+checks work in the Testing room, jobs named deploy/release/publish and GitHub deployments go to
+the server room. Success → the character leaves; failure → red ❗ ("needs a human") for 2 minutes,
+then it leaves. Deployments created by an Actions job are shown via that job only.
+
+```sh
+fly secrets set GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)
+gh api orgs/<org>/hooks -f name=web -F active=true -f 'events[]=workflow_job' -f 'events[]=deployment_status' \
+  -f config[url]=https://uplane-klaus-game.fly.dev/v1/github -f config[content_type]=json -f config[secret]=<same secret>
+```
+
+Agents can also set `ttlSeconds` on `agent.started` / `agent.activity`: they are stopped automatically
+if nothing else arrives in time (instead of the default silence timeout).
+
 ### Local development
 
 ```sh

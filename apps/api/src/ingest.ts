@@ -47,21 +47,22 @@ function agentOf(e: AgentEvent): string | null {
 /** Keeps `agents` / `system_status` in sync with the log. */
 async function project(tx: TransactionSql, e: AgentEvent) {
   const ts = new Date(e.ts);
+  const stopAt = (ttl?: number) => (ttl ? new Date(e.ts + ttl * 1000) : null);
   switch (e.type) {
     case 'agent.started':
       await tx`
-        insert into agents (id, name, role, status, activity, activity_since, task, started_at, stopped_at, last_seen_at)
-        values (${e.agent.id}, ${e.agent.name}, ${e.agent.role}, 'active', '{"kind":"idle"}', ${ts}, null, ${ts}, null, ${ts})
+        insert into agents (id, name, role, status, activity, activity_since, task, started_at, stopped_at, last_seen_at, stop_at)
+        values (${e.agent.id}, ${e.agent.name}, ${e.agent.role}, 'active', '{"kind":"idle"}', ${ts}, null, ${ts}, null, ${ts}, ${stopAt(e.ttlSeconds)})
         on conflict (id) do update set
           name = excluded.name, role = excluded.role, status = 'active', activity = excluded.activity,
           activity_since = excluded.activity_since, task = null, started_at = excluded.started_at,
-          stopped_at = null, last_seen_at = excluded.last_seen_at`;
+          stopped_at = null, last_seen_at = excluded.last_seen_at, stop_at = excluded.stop_at`;
       break;
     case 'agent.task_assigned':
       await tx`update agents set task = ${tx.json(e.task)}, last_seen_at = ${ts} where id = ${e.agentId}`;
       break;
     case 'agent.activity':
-      await tx`update agents set activity = ${tx.json(e.activity as never)}, activity_since = ${ts}, last_seen_at = ${ts} where id = ${e.agentId}`;
+      await tx`update agents set activity = ${tx.json(e.activity as never)}, activity_since = ${ts}, last_seen_at = ${ts}, stop_at = ${stopAt(e.ttlSeconds)} where id = ${e.agentId}`;
       break;
     case 'agent.task_completed':
       await tx`update agents set task = null, tasks_completed = tasks_completed + 1, last_seen_at = ${ts} where id = ${e.agentId}`;

@@ -12,4 +12,6 @@ export const env = {
   publicRead: process.env.PUBLIC_READ === 'true',
   corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   staticDir: process.env.STATIC_DIR || null,
+  /** Shared secret of the GitHub org webhook (POST /v1/github). */
+  githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || null,
 };

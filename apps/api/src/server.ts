@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { requireScope } from './auth';
 import { sql } from './db';
 import { env } from './env';
+import { fromGithub, verifySignature } from './github';
 import { ingest } from './ingest';
 import { migrate } from './migrate';
 import { snapshot } from './snapshot';
@@ -39,6 +40,25 @@ app.get('/health', async (c) => {
 app.post('/v1/events', requireScope('write'), bodyLimit({ maxSize: 1024 * 1024 }), async (c) => {
   const parsed = EventBatch.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: 'invalid batch', issues: z.treeifyError(parsed.error) }, 400);
+  return c.json(await ingest(parsed.data.events));
+});
+
+/**
+ * GitHub org webhook (workflow_job, deployment_status): every Actions job and
+ * deployment becomes an agent. Authenticated by the webhook's HMAC signature.
+ */
+app.post('/v1/github', bodyLimit({ maxSize: 10 * 1024 * 1024 }), async (c) => {
+  const secret = env.githubWebhookSecret;
+  if (!secret) return c.json({ error: 'GITHUB_WEBHOOK_SECRET is not configured' }, 503);
+  const body = await c.req.text();
+  if (!verifySignature(secret, body, c.req.header('x-hub-signature-256'))) return c.json({ error: 'bad signature' }, 401);
+  const kind = c.req.header('x-github-event') ?? '';
+  if (kind === 'ping') return c.json({ ok: true });
+  const delivery = c.req.header('x-github-delivery') ?? crypto.randomUUID();
+  const events = await fromGithub(kind, delivery, JSON.parse(body));
+  if (!events.length) return c.json({ accepted: 0, ignored: true });
+  const parsed = EventBatch.safeParse({ events });
+  if (!parsed.success) return c.json({ error: 'mapping produced invalid events', issues: z.treeifyError(parsed.error) }, 500);
   return c.json(await ingest(parsed.data.events));
 });
 

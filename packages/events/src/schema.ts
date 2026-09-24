@@ -6,7 +6,20 @@ import { z } from 'zod';
  * definition of what an event looks like.
  */
 
-export const RoleId = z.enum(['creative', 'content', 'adqa', 'codegen', 'codereview', 'testing', 'prreview', 'comms', 'statusmonitor']);
+export const RoleId = z.enum([
+  'creative',
+  'content',
+  'adqa',
+  'codegen',
+  'codereview',
+  'testing',
+  'prreview',
+  'comms',
+  'statusmonitor',
+  // GitHub Actions (via the /v1/github webhook).
+  'cicheck',
+  'deployer',
+]);
 export type RoleId = z.infer<typeof RoleId>;
 
 export const PipelineId = z.enum(['ad', 'code', 'comms', 'ops']);
@@ -70,6 +83,13 @@ const base = {
   ts: z.number().int().nonnegative(),
 };
 
+/**
+ * Stop the agent automatically if nothing else arrives within this many seconds
+ * (replaces the default silence timeout). E.g. a CI job may run for hours without
+ * events, while a failed check should leave after two minutes.
+ */
+const ttlSeconds = z.number().int().positive().max(86_400).optional();
+
 export const AgentEvent = z.discriminatedUnion('type', [
   z.object({
     ...base,
@@ -77,9 +97,10 @@ export const AgentEvent = z.discriminatedUnion('type', [
     agent: AgentInfo,
     /** Agent existed before the viewer connected (snapshot): appears at its desk. */
     alreadyRunning: z.boolean().optional(),
+    ttlSeconds,
   }),
   z.object({ ...base, type: z.literal('agent.task_assigned'), agentId, task: TaskRef }),
-  z.object({ ...base, type: z.literal('agent.activity'), agentId, activity: Activity }),
+  z.object({ ...base, type: z.literal('agent.activity'), agentId, activity: Activity, ttlSeconds }),
   z.object({ ...base, type: z.literal('agent.handoff'), fromId: agentId, toId: agentId, taskId: z.string().min(1).max(128), taskTitle: text }),
   z.object({ ...base, type: z.literal('agent.task_completed'), agentId, taskId: z.string().min(1).max(128) }),
   z.object({ ...base, type: z.literal('agent.heartbeat'), agentId }),

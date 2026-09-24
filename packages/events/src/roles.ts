@@ -31,6 +31,9 @@ export const ROLES: Record<RoleId, RoleDef> = {
   prreview: { label: 'PR Review', dept: 'eng', room: 'prreview', pipeline: 'code' },
   comms: { label: 'Comms', dept: 'comms', room: 'comms', pipeline: 'comms' },
   statusmonitor: { label: 'Status Monitor', dept: 'eng', room: 'server', pipeline: 'ops' },
+  // GitHub Actions: checks work in Testing, deployments go to the server room.
+  cicheck: { label: 'CI check', dept: 'eng', room: 'testing', pipeline: 'code' },
+  deployer: { label: 'Deploy', dept: 'eng', room: 'server', pipeline: 'ops' },
 };
 
 export const ROLE_IDS = Object.keys(ROLES) as RoleId[];
@@ -40,7 +43,7 @@ export const PIPELINES: Record<PipelineId, RoleId[]> = {
   ad: ['creative', 'content', 'adqa'],
   code: ['codegen', 'codereview', 'testing', 'prreview'],
   comms: ['comms'],
-  ops: ['statusmonitor'],
+  ops: ['statusmonitor', 'deployer'],
 };
 
 /** Which shared room an agent physically visits for a (longer) tool call. */
