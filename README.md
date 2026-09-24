@@ -10,7 +10,7 @@ The office shows live data from the office API only; without it the office stays
 Lighting follows the real sun over San Francisco (day, golden hour, dusk, night); preview any
 SF time with `?time=21:30`.
 
-TV / signage players: add `?quality=low` (weak sticks like Fire TV) or `?quality=medium`; `?debug` shows
+TV / signage players: add `?quality=low` (weak sticks like Fire TV: native res, static shadows, 30 fps) or `?quality=medium`; `?debug` shows
 GPU, fps, draw calls, memory and the last error. In `?kiosk` mode the page reloads itself after a crash.
 
 ```sh

@@ -60,6 +60,7 @@ async function main() {
   const debug = urlParams.has('debug') ? new DebugOverlay(stage.renderer, quality, () => director.actors.size) : null;
   const office = new OfficeView(layout, furniture);
   stage.scene.add(office.group);
+  stage.staticCasters = office.group;
 
   const alarms = new AlarmSystem(layout.alarms, stage.sun, stage.hemi);
   stage.scene.add(alarms.group);
@@ -127,7 +128,7 @@ async function main() {
 
   const hud = new Hud(app, stage, director, store);
   const shadowsBox = document.querySelector<HTMLInputElement>('#shadows');
-  if (shadowsBox) shadowsBox.checked = quality.shadows;
+  if (shadowsBox) shadowsBox.checked = quality.shadows !== 'off';
   // Day/night from the real sun over San Francisco (?time=21:30 previews an SF time).
   const dayCycle = new DayCycle(stage, office, params.get('time'));
   dayCycle.onLevels = (sun, hemi) => {
@@ -170,6 +171,7 @@ async function main() {
       dayTimer = 15;
       dayCycle.apply();
       hud.setClock(dayCycle.label);
+      stage.refreshShadows();
     }
     const incident = store.system.status !== 'operational';
     alarms.update(dt, incident, simTime);

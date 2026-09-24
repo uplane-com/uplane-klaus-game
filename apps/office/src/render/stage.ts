@@ -22,7 +22,9 @@ export class Stage {
     // Lower quality renders fewer pixels and lets the browser scale the canvas up.
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.maxPixelRatio) * quality.renderScale);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = quality.shadows;
+    this.renderer.shadowMap.enabled = quality.shadows !== 'off';
+    // Static shadows: the map is only re-rendered on request (see refreshShadows).
+    this.renderer.shadowMap.autoUpdate = quality.shadows !== 'static';
     this.renderer.shadowMap.type = quality.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.98;
@@ -104,8 +106,32 @@ export class Stage {
     this.camera.position.z += dz;
   }
 
+  /** Objects whose shadows are baked in static mode (the office); everything else is left out. */
+  staticCasters: THREE.Object3D | null = null;
+  private shadowsDirty = true;
+
+  /** Static shadow mode: re-render the shadow map on the next frame (e.g. the sun moved). */
+  refreshShadows() {
+    this.shadowsDirty = true;
+  }
+
   render() {
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    const r = this.renderer;
+    if (!r.shadowMap.autoUpdate && r.shadowMap.enabled && this.shadowsDirty && this.staticCasters) {
+      // Bake shadows with only the office visible (no people or cars frozen into the map),
+      // then draw the real frame reusing that map.
+      this.shadowsDirty = false;
+      const hidden: THREE.Object3D[] = [];
+      for (const o of this.scene.children) {
+        if (o === this.staticCasters || (o as THREE.Light).isLight || o === this.sun.target || !o.visible) continue;
+        o.visible = false;
+        hidden.push(o);
+      }
+      r.shadowMap.needsUpdate = true;
+      r.render(this.scene, this.camera);
+      for (const o of hidden) o.visible = true;
+    }
+    r.render(this.scene, this.camera);
   }
 }

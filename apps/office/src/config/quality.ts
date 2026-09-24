@@ -1,8 +1,9 @@
 /**
  * Render quality presets, chosen with `?quality=low|medium|high` (default high).
  * `low` is meant for weak signage players (Fire TV / Signage Stick, Chromecast,
- * Android TV boxes): it renders fewer pixels, drops shadows and reflections,
- * caps the frame rate and animates characters less often.
+ * Android TV boxes): native resolution at 1x, static shadows (re-rendered only
+ * when the sun moves, people and cars excluded), no reflections, 30 fps and
+ * characters animated every other frame.
  */
 export type QualityLevel = 'low' | 'medium' | 'high';
 
@@ -13,7 +14,8 @@ export interface Quality {
   maxPixelRatio: number;
   /** Fraction of the (capped) pixel ratio actually rendered; the canvas is scaled up. */
   renderScale: number;
-  shadows: boolean;
+  /** off, static (office only, refreshed when the sun moves) or dynamic (every frame). */
+  shadows: 'off' | 'static' | 'dynamic';
   shadowMapSize: number;
   softShadows: boolean;
   /** Image-based reflections (glass, cars, water). */
@@ -24,9 +26,9 @@ export interface Quality {
 }
 
 const PRESETS: Record<QualityLevel, Omit<Quality, 'level'>> = {
-  low: { antialias: false, maxPixelRatio: 1, renderScale: 0.67, shadows: false, shadowMapSize: 1024, softShadows: false, environment: false, maxFps: 30, animEvery: 2 },
-  medium: { antialias: false, maxPixelRatio: 1, renderScale: 0.85, shadows: true, shadowMapSize: 2048, softShadows: false, environment: true, maxFps: 45, animEvery: 1 },
-  high: { antialias: true, maxPixelRatio: 2, renderScale: 1, shadows: true, shadowMapSize: 4096, softShadows: true, environment: true, maxFps: 120, animEvery: 1 },
+  low: { antialias: true, maxPixelRatio: 1, renderScale: 1, shadows: 'static', shadowMapSize: 2048, softShadows: true, environment: false, maxFps: 30, animEvery: 2 },
+  medium: { antialias: true, maxPixelRatio: 1, renderScale: 1, shadows: 'dynamic', shadowMapSize: 2048, softShadows: false, environment: true, maxFps: 45, animEvery: 1 },
+  high: { antialias: true, maxPixelRatio: 2, renderScale: 1, shadows: 'dynamic', shadowMapSize: 4096, softShadows: true, environment: true, maxFps: 120, animEvery: 1 },
 };
 
 export function readQuality(params: URLSearchParams): Quality {

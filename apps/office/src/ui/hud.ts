@@ -115,6 +115,7 @@ export class Hud {
     p.querySelector<HTMLInputElement>('#shadows')!.addEventListener('change', (e) => {
       const on = (e.target as HTMLInputElement).checked;
       this.stage.renderer.shadowMap.enabled = on;
+      this.stage.refreshShadows();
       this.stage.scene.traverse((o) => {
         const m = (o as THREE.Mesh).material as THREE.Material | undefined;
         if (m) m.needsUpdate = true;
