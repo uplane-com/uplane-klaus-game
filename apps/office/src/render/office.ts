@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { PLAZA } from '../config/office';
 import { BIKE_RACK, BUS_STOP_X, HELIPAD, ROAD } from '../config/transport';
-import { DEPTS } from '@office/events';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { GLASS_WALL_HEIGHT, type FurnitureModel } from '../config/scale';
@@ -860,7 +859,9 @@ export class OfficeView {
       mesh.position.set(x, 0.03, z);
       this.group.add(mesh);
 
-      const accent = room.def.dept ? DEPTS[room.def.dept].color : '#1a44ff';
+      // Same grey as the floor text (light on the dark server/media floors).
+      const dark = room.def.kind === 'server' || room.def.kind === 'media';
+      const accent = dark ? '#c9ccd4' : '#6f7482';
       this.signs.set(room.def.id, { flat: mesh.material as THREE.MeshBasicMaterial, name: room.def.name.toUpperCase(), accent, x: x - 3 + 0.09, z, text: null, t: 0 });
     }
   }
@@ -874,8 +875,9 @@ export class OfficeView {
     geo.translate(-bb.min.x, -(bb.min.y + bb.max.y) / 2, 0);
     geo.rotateX(-Math.PI / 2);
     const mat = [
-      new THREE.MeshStandardMaterial({ color: '#f4f5f8', roughness: 0.45 }), // letter faces (top)
-      new THREE.MeshStandardMaterial({ color: sign.accent, roughness: 0.55 }), // extruded sides
+      // Grey letters: tops a touch lighter than the sides so the extrusion reads as 3D.
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(sign.accent).lerp(new THREE.Color('#ffffff'), 0.25), roughness: 0.6 }),
+      new THREE.MeshStandardMaterial({ color: sign.accent, roughness: 0.7 }),
     ];
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
