@@ -171,7 +171,7 @@ async function main() {
     nav.update(dt);
     const zoom = stage.camera.zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
-    office.update(dt, stage.camera);
+    office.update(dt);
     dayTimer -= dt;
     if (dayTimer <= 0) {
       dayTimer = 15;
