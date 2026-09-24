@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 /** Renderer, isometric-style orthographic camera, controls and lights. */
 export class Stage {
@@ -16,9 +17,9 @@ export class Stage {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.98;
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color('#bcd3e6');
@@ -43,7 +44,13 @@ export class Stage {
     this.controls.zoomToCursor = true;
     this.controls.update();
 
-    this.hemi = new THREE.HemisphereLight('#f4f7ff', '#8a8f7a', 1.4);
+    // Soft studio reflections: glass, cars, the robot and water pick up highlights.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.22;
+    pmrem.dispose();
+
+    this.hemi = new THREE.HemisphereLight('#f4f7ff', '#8a8f7a', 1.2);
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight('#fff4e0', 2.3);
     this.sun.position.copy(center).add(new THREE.Vector3(-45, 90, 35));

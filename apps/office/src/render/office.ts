@@ -15,6 +15,9 @@ export class OfficeView {
   private leds!: THREE.InstancedMesh;
   private ledTimer = 0;
   private readonly tmpColor = new THREE.Color();
+  /** Fountain water jets (animated). */
+  private jets: THREE.Mesh[] = [];
+  private waterTime = 0;
 
   constructor(
     private readonly layout: OfficeLayout,
@@ -34,6 +37,7 @@ export class OfficeView {
     this.buildStreetProps();
     this.buildRugs();
     this.buildProps();
+    this.buildLandscape();
   }
 
   // -- public -------------------------------------------------------------
@@ -45,6 +49,11 @@ export class OfficeView {
   }
 
   update(dt: number) {
+    this.waterTime += dt;
+    this.jets.forEach((j, i) => {
+      const s = 1 + Math.sin(this.waterTime * 3.1 + i * 1.7) * 0.12;
+      j.scale.set(1, s, 1);
+    });
     this.ledTimer -= dt;
     if (this.ledTimer > 0) return;
     this.ledTimer = 0.18;
@@ -348,8 +357,9 @@ export class OfficeView {
       new THREE.MeshStandardMaterial({ color: '#7a5a3c' }),
       trees.length,
     );
-    const crownGeo = new THREE.IcosahedronGeometry(1.5, 0).translate(0, 2.8, 0);
-    const crown = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: '#5f9b57', flatShading: true }), trees.length);
+    const crownGeo = new THREE.IcosahedronGeometry(1.5, 1).translate(0, 2.8, 0);
+    const crown = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: '#ffffff', flatShading: true }), trees.length);
+    const greens = ['#5f9b57', '#4f8a4c', '#6fae5f', '#7bb86a', '#5a9460'];
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     trees.forEach((t, i) => {
@@ -357,9 +367,131 @@ export class OfficeView {
       m.compose(new THREE.Vector3(t.x, 0, t.z), q, new THREE.Vector3(t.s, t.s, t.s));
       trunk.setMatrixAt(i, m);
       crown.setMatrixAt(i, m);
+      crown.setColorAt(i, this.tmpColor.set(greens[i % greens.length]));
     });
     trunk.castShadow = crown.castShadow = true;
     this.group.add(trunk, crown);
+  }
+
+  /** Planters with flowers, street lamps, the fountain and bushes. */
+  private buildLandscape() {
+    const L = this.layout.landscape;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const v = new THREE.Vector3();
+    const sc = new THREE.Vector3();
+    const std = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...extra });
+
+    // Planters: dark concrete trough, low hedge on top, dotted with flowers.
+    if (L.planters.length) {
+      const box = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+      const trough = new THREE.InstancedMesh(box, std('#4a4e57', { roughness: 0.9 }), L.planters.length);
+      const hedge = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1, 3, 1, 1).translate(0, 0.5, 0), std('#4f8f4a', { flatShading: true }), L.planters.length);
+      const flowerColors = ['#ff5c8a', '#ffd23f', '#ffffff', '#b388ff', '#ff8a5b'];
+      const perPlanter = 14;
+      const flowers = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.09, 0), std('#ffffff', { roughness: 0.6 }), L.planters.length * perPlanter);
+      let f = 0;
+      L.planters.forEach((p, i) => {
+        m.compose(v.set(p.x, 0, p.z), q.identity(), sc.set(p.w, p.h, p.d));
+        trough.setMatrixAt(i, m);
+        m.compose(v.set(p.x, p.h, p.z), q, sc.set(p.w - 0.15, 0.32, p.d - 0.15));
+        hedge.setMatrixAt(i, m);
+        for (let k = 0; k < perPlanter; k++) {
+          const fx = p.x - p.w / 2 + 0.2 + ((k * 0.61803) % 1) * (p.w - 0.4);
+          const fz = p.z + (((k * 0.3819) % 1) - 0.5) * (p.d - 0.3);
+          m.compose(v.set(fx, p.h + 0.34, fz), q, sc.set(1, 1, 1));
+          flowers.setMatrixAt(f, m);
+          flowers.setColorAt(f, this.tmpColor.set(flowerColors[(i + k) % flowerColors.length]));
+          f++;
+        }
+      });
+      trough.castShadow = trough.receiveShadow = hedge.castShadow = hedge.receiveShadow = true;
+      this.group.add(trough, hedge, flowers);
+    }
+
+    // Street lamps: slim dark pole, arm and a warm glowing head.
+    if (L.lamps.length) {
+      // Modern lantern: dark pole, glowing glass cylinder with a dark cap (visible from above).
+      const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.1, 3.4, 8).translate(0, 1.7, 0), std('#2b2f38', { metalness: 0.6, roughness: 0.4 }), L.lamps.length);
+      const arm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.24, 0.12, 12).translate(0, 3.45, 0), pole.material, L.lamps.length);
+      const head = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.32, 0.26, 0.1, 16).translate(0, 4.15, 0), std('#2b2f38', { metalness: 0.6, roughness: 0.4 }), L.lamps.length);
+      const glow = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.62, 16).translate(0, 3.8, 0), new THREE.MeshBasicMaterial({ color: '#ffe7b0', toneMapped: false }), L.lamps.length);
+      L.lamps.forEach((p, i) => {
+        m.compose(v.set(p.x, 0, p.z), q.identity(), sc.set(1, 1, 1));
+        pole.setMatrixAt(i, m);
+        arm.setMatrixAt(i, m);
+        head.setMatrixAt(i, m);
+        glow.setMatrixAt(i, m);
+      });
+      pole.castShadow = head.castShadow = true;
+      this.group.add(pole, arm, head, glow);
+    }
+
+    // Fountain: stone basin, water, two tiers and animated jets.
+    if (L.fountain) {
+      const { x, z, r } = L.fountain;
+      const g = new THREE.Group();
+      g.position.set(x, 0, z);
+      const stone = std('#d9d4ca', { roughness: 0.7 });
+      const water = new THREE.MeshStandardMaterial({ color: '#3aa0ff', roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.85 });
+      const add = (geo: THREE.BufferGeometry, mat: THREE.Material, y: number) => {
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = y;
+        mesh.castShadow = mesh.receiveShadow = true;
+        g.add(mesh);
+        return mesh;
+      };
+      add(new THREE.CylinderGeometry(r, r + 0.1, 0.5, 40, 1, true), stone, 0.25).material = new THREE.MeshStandardMaterial({ color: '#d9d4ca', roughness: 0.7, side: THREE.DoubleSide });
+      add(new THREE.TorusGeometry(r, 0.12, 8, 40).rotateX(Math.PI / 2), stone, 0.5);
+      add(new THREE.CircleGeometry(r - 0.05, 40).rotateX(-Math.PI / 2), water, 0.38);
+      add(new THREE.CylinderGeometry(0.25, 0.35, 1.1, 16), stone, 0.55);
+      add(new THREE.CylinderGeometry(0.9, 0.7, 0.16, 24), stone, 1.1);
+      add(new THREE.CircleGeometry(0.82, 24).rotateX(-Math.PI / 2), water, 1.19);
+      add(new THREE.CylinderGeometry(0.12, 0.16, 0.6, 12), stone, 1.45);
+      const jetMat = new THREE.MeshStandardMaterial({ color: '#cfeaff', transparent: true, opacity: 0.55, roughness: 0.05 });
+      const center = add(new THREE.CylinderGeometry(0.035, 0.08, 1.0, 8).translate(0, 0.5, 0), jetMat, 1.75);
+      this.jets.push(center);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 0.9, 6).translate(0, 0.45, 0), jetMat);
+        jet.position.set(Math.cos(a) * (r - 0.45), 0.4, Math.sin(a) * (r - 0.45));
+        jet.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5);
+        g.add(jet);
+        this.jets.push(jet);
+      }
+      this.group.add(g);
+    }
+
+    // Indoor trees: white round planter, slim trunk, layered crown.
+    if (L.indoorTrees.length) {
+      const n = L.indoorTrees.length;
+      const pot = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45, 0.36, 0.7, 20).translate(0, 0.35, 0), std('#f4f5f8', { roughness: 0.35 }), n);
+      const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.07, 1.2, 6).translate(0, 1.2, 0), std('#7a5a3c'), n);
+      const crownA = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 0.8, 1).translate(0, 1.95, 0), std('#4f9a5b', { flatShading: true }), n);
+      const crownB = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.45, 1).translate(0.2, 2.45, -0.1), std('#63ad66', { flatShading: true }), n);
+      L.indoorTrees.forEach((t, i) => {
+        q.setFromAxisAngle(v.set(0, 1, 0), t.x);
+        m.compose(v.set(t.x, 0, t.z), q, sc.set(t.s, t.s, t.s));
+        for (const inst of [pot, trunk, crownA, crownB]) inst.setMatrixAt(i, m);
+      });
+      for (const inst of [pot, trunk, crownA, crownB]) inst.castShadow = true;
+      this.group.add(pot, trunk, crownA, crownB);
+    }
+
+    // Bushes: soft low-poly blobs.
+    if (L.bushes.length) {
+      const geo = new THREE.IcosahedronGeometry(0.75, 1).scale(1, 0.75, 1).translate(0, 0.45, 0);
+      const bushes = new THREE.InstancedMesh(geo, std('#4a8a45', { flatShading: true }), L.bushes.length);
+      const greens = ['#4a8a45', '#5a9c4f', '#3f7d3e', '#6aa85a'];
+      L.bushes.forEach((b, i) => {
+        q.setFromAxisAngle(v.set(0, 1, 0), b.x * 1.3);
+        m.compose(v.set(b.x, 0, b.z), q, sc.set(b.s, b.s, b.s));
+        bushes.setMatrixAt(i, m);
+        bushes.setColorAt(i, this.tmpColor.set(greens[i % greens.length]));
+      });
+      bushes.castShadow = bushes.receiveShadow = true;
+      this.group.add(bushes);
+    }
   }
 
   private buildStreetProps() {

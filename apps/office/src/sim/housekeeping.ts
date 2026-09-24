@@ -146,8 +146,9 @@ export class Housekeeping {
       const tilt = w.tool.getObjectByName('tilt')!;
       tilt.rotation.x += ((working ? -0.6 : -0.35) - tilt.rotation.x) * Math.min(1, dt * 6);
     } else {
-      // Janitor empties bins at a stop, pushes the cart otherwise.
-      b.gesture = working ? (Math.sin(time * 0.9) > 0 ? 'pick-up' : 'interact-right') : null;
+      // Janitor works at his cart at a stop (one steady motion; the looping
+      // pick-up clip made him bob up and down), pushes it otherwise.
+      b.gesture = working ? 'interact-right' : null;
     }
     b.update(dt, time, { ride: w.kind === 'janitor' && !working });
   }

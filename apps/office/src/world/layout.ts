@@ -8,7 +8,7 @@ import {
   WALL_THICKNESS,
   type FurnitureModel,
 } from '../config/scale';
-import { BIKE_RACK, BUS_STOP_X, CAR_SLOTS, HELIPAD, ROAD } from '../config/transport';
+import { BIKE_RACK, BUS_BAYS, BUS_STOP_X, CAR_SLOTS, HELIPAD, ROAD } from '../config/transport';
 import { v2, type Vec2 } from '../util/math';
 import { Rng } from '../util/rng';
 
@@ -200,6 +200,8 @@ export interface OfficeLayout {
   serviceDoor: Vec2;
   /** Charging dock in the east hallway where the office robot waits. */
   robotDock: { x: number; z: number; yaw: number };
+  /** Outdoor landscaping: planters along the façade, street lamps, a fountain, bushes. */
+  landscape: { planters: Box[]; lamps: Vec2[]; fountain: { x: number; z: number; r: number } | null; bushes: Tree[]; indoorTrees: Tree[] };
   /** Reception staff seats (always occupied, not agents). */
   receptionists: { x: number; z: number; yaw: number }[];
 }
@@ -1086,6 +1088,7 @@ export function buildLayout(seed = 7): OfficeLayout {
     receptionists: [],
     serviceDoor: v2(BUILDING.x1 + 3, SIDE_EXIT_Z),
     robotDock: { x: BUILDING.x1 - 1.4, z: 12, yaw: FACE.w },
+    landscape: { planters: [], lamps: [], fountain: null, bushes: [], indoorTrees: [] },
     turnstiles: null,
   };
 
@@ -1213,6 +1216,8 @@ export function buildLayout(seed = 7): OfficeLayout {
 
   buildTransport(out);
 
+  buildLandscape(out, rng);
+
   // Trees along the street.
   for (let x = PLAZA.x0 + 4; x < PLAZA.x1 - 2; x += 9) {
     if (Math.abs(x - ENTRANCE.x) < 6 || Math.abs(x - BUS_STOP_X) < 5 || Math.abs(x - HELIPAD.x) < 5) continue;
@@ -1222,6 +1227,64 @@ export function buildLayout(seed = 7): OfficeLayout {
   }
 
   return out;
+}
+
+/**
+ * Landscaping: flower planters along the front façade (leaving the entrance
+ * free), street lamps along the curb, a fountain on the west plaza, hedges and
+ * bushes around the building and a tree line behind it.
+ */
+function buildLandscape(out: OfficeLayout, rng: Rng) {
+  const L = out.landscape;
+  const solid = (x: number, z: number, w: number, d: number) => out.obstacles.push({ x, z, w, d, h: OBSTACLE_NAV_HEIGHT });
+
+  // Planters along the south façade, skipping the entrance and the helipad walk.
+  const pz = BUILDING.z1 + 1.1;
+  for (let x = BUILDING.x0 + 3; x < BUILDING.x1 - 2; x += 7) {
+    if (Math.abs(x - ENTRANCE.x) < ENTRANCE.width / 2 + 3) continue;
+    const p = { x, z: pz, w: 4.2, d: 0.9, h: 0.55 };
+    L.planters.push(p);
+    solid(p.x, p.z, p.w, p.d);
+  }
+
+  // Street lamps along the curb.
+  // Keep clear of car doors (slot centres) and the bus bays where people get in and out.
+  for (let x = PLAZA.x0 + 6; x < PLAZA.x1 - 1; x += 12) {
+    if (BUS_BAYS.some((b) => Math.abs(x - b) < 6.5) || CAR_SLOTS.some((c) => Math.abs(x - c) < 1.5)) continue;
+    const pos = v2(x, ROAD.curbZ - 0.7);
+    L.lamps.push(pos);
+    solid(pos.x, pos.z, 0.4, 0.4);
+  }
+
+  // Tall indoor trees in the hallways, against the walls between room doors (never mid-corridor).
+  for (const [x, z] of [
+    [22, 18.9],
+    [66, 18.9],
+    [44, 23.1],
+    [80.8, 23.1],
+    [22, 42.9],
+    [66, 42.9],
+    [44, 47.1],
+    [74, 47.1],
+  ]) {
+    L.indoorTrees.push({ x, z, s: rng.float(1.3, 1.5) });
+    solid(x, z, 1.0, 1.0);
+  }
+
+  // Fountain on the west plaza.
+  L.fountain = { x: BUILDING.x0 + 10, z: PLAZA.z0 + 6.5, r: 2.4 };
+  solid(L.fountain.x, L.fountain.z, L.fountain.r * 2, L.fountain.r * 2);
+
+  // Hedge-like bushes hugging the building outside (not in front of the side exits).
+  const bush = (x: number, z: number, s: number) => L.bushes.push({ x, z, s });
+  for (let x = BUILDING.x0; x <= BUILDING.x1; x += 1.6) bush(x + rng.float(-0.3, 0.3), BUILDING.z0 - 1.3 + rng.float(-0.2, 0.2), rng.float(0.8, 1.2));
+  for (const x of [BUILDING.x0 - 1.3, BUILDING.x1 + 1.3]) {
+    for (let z = BUILDING.z0 + 1; z <= SIDE_EXIT_Z - 5; z += 1.6) bush(x + rng.float(-0.2, 0.2), z, rng.float(0.8, 1.15));
+  }
+  // Tree line behind the building (purely decorative, outside the walkable area).
+  for (let x = BUILDING.x0 - 6; x <= BUILDING.x1 + 8; x += rng.float(6, 9)) {
+    out.trees.push({ x, z: BUILDING.z0 - 6 - rng.float(0, 4), s: rng.float(0.9, 1.35) });
+  }
 }
 
 /** Bus stop, curb pick-up spots, bike rack and helipad on the plaza. */
