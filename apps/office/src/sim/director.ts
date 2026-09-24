@@ -104,6 +104,9 @@ export class Director {
     this.gates = g;
   }
 
+  /** Called when someone scans in at the lobby gates on their way into the building. */
+  onEnter: ((x: number, z: number) => void) | null = null;
+
   /** Everyone passing the lobby gates stops briefly to scan their badge. */
   private checkGates(a: Actor) {
     const g = this.gates;
@@ -114,6 +117,8 @@ export class Director {
     if (a.body.pause(0.8, facing)) {
       a.lastScan = this.time;
       g.scan(lane);
+      // Coming from the street (south of the gates) = entering the building.
+      if (a.body.z > g.z) this.onEnter?.(a.body.x, a.body.z);
     }
   }
 

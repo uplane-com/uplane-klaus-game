@@ -92,6 +92,8 @@ async function main() {
   if (gates) {
     stage.scene.add(gates.group);
     director.attachGates(gates);
+    // Receptionists greet everyone coming in with a wave and a wink.
+    director.onEnter = (x, z) => reception.greet(x, z);
   }
   const smoke = new Smoke(layout.racks);
   stage.scene.add(smoke.points);
