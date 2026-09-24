@@ -60,6 +60,10 @@ export class AlarmSystem {
     this.group.visible = false;
   }
 
+  /** Normal light levels (set by the day/night cycle); an alert dims relative to these. */
+  baseSun = 2.3;
+  baseHemi = 1.4;
+
   get active() {
     return this.level > 0.01;
   }
@@ -72,8 +76,8 @@ export class AlarmSystem {
     this.beamMat.opacity = k * 0.28;
     this.beams.visible = k > 0.02;
     this.redLight.intensity = k * (0.4 + 0.9 * pulse);
-    this.sun.intensity = 2.3 * (1 - 0.45 * k);
-    this.hemi.intensity = 1.4 * (1 - 0.35 * k);
+    this.sun.intensity = this.baseSun * (1 - 0.45 * k);
+    this.hemi.intensity = this.baseHemi * (1 - 0.35 * k);
 
     this.group.visible = k > 0.01;
     if (!this.group.visible) return;

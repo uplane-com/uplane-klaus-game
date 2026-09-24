@@ -6,6 +6,7 @@ import { Navigation } from './nav/navigation';
 import { loadFurniture } from './render/assets';
 import { AlarmSystem } from './render/alarms';
 import { Cinematics } from './render/cinematics';
+import { DayCycle } from './render/dayCycle';
 import { Guards } from './render/guards';
 import { SeatedStaff } from './render/seatedStaff';
 import { Housekeeping } from './sim/housekeeping';
@@ -111,6 +112,15 @@ async function main() {
   });
 
   const hud = new Hud(app, stage, director, store);
+  // Day/night from the real sun over San Francisco (?time=21:30 previews an SF time).
+  const dayCycle = new DayCycle(stage, office, params.get('time'));
+  dayCycle.onLevels = (sun, hemi) => {
+    alarms.baseSun = sun;
+    alarms.baseHemi = hemi;
+  };
+  dayCycle.apply();
+  hud.setClock(dayCycle.label);
+  let dayTimer = 0;
   if (!apiUrl) hud.setConnection('offline', 'No data source. Open with ?api=<url>&key=<key>.');
   else {
     hud.setConnection(connection.state, connection.detail);
@@ -128,7 +138,7 @@ async function main() {
   loading.remove();
 
   // Debug handle for poking at the sim from the console.
-  Object.assign(window, { office: { layout, nav, director, store, source, stage, chars, transport, housekeeping, robot, THREE, get cinematics() { return cinematics; } } });
+  Object.assign(window, { office: { layout, nav, director, store, source, stage, chars, transport, housekeeping, robot, dayCycle, THREE, get cinematics() { return cinematics; } } });
 
   const timer = new THREE.Timer();
   let simTime = 0;
@@ -139,6 +149,12 @@ async function main() {
     const zoom = stage.camera.zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
     office.update(dt);
+    dayTimer -= dt;
+    if (dayTimer <= 0) {
+      dayTimer = 15;
+      dayCycle.apply();
+      hud.setClock(dayCycle.label);
+    }
     const incident = store.system.status !== 'operational';
     alarms.update(dt, incident, simTime);
     guards.update(dt, simTime, incident);

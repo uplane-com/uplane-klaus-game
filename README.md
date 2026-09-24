@@ -7,6 +7,8 @@ take coffee breaks and leave again. An incident on the status page turns on
 office-wide red alert beacons.
 
 The office shows live data from the office API only; without it the office stays empty.
+Lighting follows the real sun over San Francisco (day, golden hour, dusk, night); preview any
+SF time with `?time=21:30`.
 
 ```sh
 pnpm install

@@ -100,6 +100,19 @@ canvas {
   display: block;
 }
 
+/* SF time + sun/moon, top centre (visible in kiosk mode too). */
+.clock-chip {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .system-slot {
   margin-left: auto;
 }

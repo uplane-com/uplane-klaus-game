@@ -66,6 +66,17 @@ export class Hud {
     this.bindPointer();
   }
 
+  /** SF local time + sun/moon, shown in the header. */
+  setClock(text: string) {
+    let el = this.root.querySelector<HTMLElement>('.clock-chip');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'panel clock-chip';
+      this.root.appendChild(el);
+    }
+    if (el.textContent !== text) el.textContent = text;
+  }
+
   /** Shows whether live data is flowing (or why not). */
   setConnection(state: 'connecting' | 'live' | 'offline', detail?: string) {
     const badge = this.root.querySelector<HTMLElement>('#conn-badge');

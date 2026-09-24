@@ -18,12 +18,21 @@ export class OfficeView {
   /** Fountain water jets (animated). */
   private jets: THREE.Mesh[] = [];
   private waterTime = 0;
+  /** Outdoor materials and their daylight colours, dimmed at night. */
+  private readonly outdoor: { mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial; base: THREE.Color }[] = [];
+  /** Pools of lamplight on the pavement (only visible after dark). */
+  private lampPools: THREE.MeshBasicMaterial | null = null;
 
   constructor(
     private readonly layout: OfficeLayout,
     furniture: Map<FurnitureModel, ModelProto>,
   ) {
-    this.buildGround();
+    const outdoors = (build: () => void) => {
+      const from = this.group.children.length;
+      build();
+      for (const obj of this.group.children.slice(from)) obj.traverse((o) => (o.userData.outdoor ??= true));
+    };
+    outdoors(() => this.buildGround());
     this.buildFloors();
     this.buildWalls();
     this.buildFurniture(furniture);
@@ -32,12 +41,44 @@ export class OfficeView {
     this.buildBoards();
     this.buildTables();
     this.buildRacks();
-    this.buildTrees();
+    outdoors(() => this.buildTrees());
     this.buildLabels();
-    this.buildStreetProps();
+    outdoors(() => this.buildStreetProps());
     this.buildRugs();
     this.buildProps();
-    this.buildLandscape();
+    outdoors(() => this.buildLandscape());
+    this.collectOutdoor();
+  }
+
+  /** Remember every outdoor material (not light sources, not the indoor trees) for the night dimming. */
+  private collectOutdoor() {
+    const seen = new Set<THREE.Material>();
+    this.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || o.userData.outdoor !== true || o.userData.light) return;
+      for (const mat of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const m = mat as THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
+        if (seen.has(m) || !m.color) continue;
+        seen.add(m);
+        this.outdoor.push({ mat: m, base: m.color.clone() });
+      }
+    });
+  }
+
+  /**
+   * 0 = full daylight, 1 = deep night. Outdoor surfaces fade to a dim blue
+   * (the office itself stays lit) and the lamps throw light onto the pavement.
+   */
+  setNight(k: number) {
+    const tint = this.tmpColor;
+    for (const { mat, base } of this.outdoor) {
+      tint.setRGB(1 - k * 0.74, 1 - k * 0.7, 1 - k * 0.55);
+      mat.color.copy(base).multiply(tint);
+    }
+    if (this.lampPools) {
+      this.lampPools.opacity = Math.max(0, (k - 0.25) / 0.75) * 0.75;
+      this.lampPools.visible = this.lampPools.opacity > 0.01;
+    }
   }
 
   // -- public -------------------------------------------------------------
@@ -117,6 +158,7 @@ export class OfficeView {
       const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map, color: tint, roughness: f.pattern === 'concrete' ? 0.7 : 0.85 }));
       mesh.position.set((f.x0 + f.x1) / 2, f.y, (f.z0 + f.z1) / 2);
       mesh.receiveShadow = true;
+      if (f.pattern === 'pavers') mesh.userData.outdoor = true;
       this.group.add(mesh);
     }
   }
@@ -424,7 +466,19 @@ export class OfficeView {
         glow.setMatrixAt(i, m);
       });
       pole.castShadow = head.castShadow = true;
-      this.group.add(pole, arm, head, glow);
+      glow.userData.light = true;
+      // Soft pools of light on the pavement around each lamp (faded in at night).
+      const poolTex = radialGlow();
+      this.lampPools = new THREE.MeshBasicMaterial({ map: poolTex, color: '#ffd9a0', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+      const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2).translate(0, 0.04, 0), this.lampPools, L.lamps.length);
+      L.lamps.forEach((p, i) => {
+        m.compose(v.set(p.x, 0, p.z), q.identity(), sc.set(1, 1, 1));
+        pools.setMatrixAt(i, m);
+      });
+      pools.userData.light = true;
+      pools.renderOrder = 2;
+      this.lampPools.visible = false;
+      this.group.add(pole, arm, head, glow, pools);
     }
 
     // Fountain: stone basin, water, two tiers and animated jets.
@@ -474,7 +528,10 @@ export class OfficeView {
         m.compose(v.set(t.x, 0, t.z), q, sc.set(t.s, t.s, t.s));
         for (const inst of [pot, trunk, crownA, crownB]) inst.setMatrixAt(i, m);
       });
-      for (const inst of [pot, trunk, crownA, crownB]) inst.castShadow = true;
+      for (const inst of [pot, trunk, crownA, crownB]) {
+        inst.castShadow = true;
+        inst.userData.outdoor = false;
+      }
       this.group.add(pot, trunk, crownA, crownB);
     }
 
@@ -809,6 +866,22 @@ function canvasArt(accent: string): THREE.Texture {
   ctx.moveTo(8, 88);
   ctx.bezierCurveTo(40, 60, 80, 100, 120, 76);
   ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** White radial falloff used for light pools. */
+function radialGlow(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.35)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
