@@ -28,7 +28,7 @@ export interface Quality {
 const PRESETS: Record<QualityLevel, Omit<Quality, 'level'>> = {
   low: { antialias: true, maxPixelRatio: 1, renderScale: 1, shadows: 'static', shadowMapSize: 2048, softShadows: true, environment: false, maxFps: 30, animEvery: 2 },
   medium: { antialias: true, maxPixelRatio: 1, renderScale: 1, shadows: 'dynamic', shadowMapSize: 2048, softShadows: false, environment: true, maxFps: 45, animEvery: 1 },
-  high: { antialias: true, maxPixelRatio: 2, renderScale: 1, shadows: 'dynamic', shadowMapSize: 4096, softShadows: true, environment: true, maxFps: 120, animEvery: 1 },
+  high: { antialias: true, maxPixelRatio: 2, renderScale: 1, shadows: 'dynamic', shadowMapSize: 4096, softShadows: true, environment: true, maxFps: 60, animEvery: 1 },
 };
 
 export function readQuality(params: URLSearchParams): Quality {
