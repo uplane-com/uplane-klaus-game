@@ -25,6 +25,10 @@ interface Worker {
   leaving: boolean;
   /** Remaining stops in the current room (cleaner) before picking another room. */
   queue: Vec2[];
+  /** 0..1 blend of the work pose (eases in/out instead of snapping). */
+  workBlend: number;
+  /** Stroke phase (radians). */
+  phase: number;
 }
 
 /**
@@ -100,7 +104,7 @@ export class Housekeeping {
     this.scene.add(char.root);
     const door = this.layout.serviceDoor;
     const body = new Body(this.nav, char, v2(door.x, door.z + (kind === 'janitor' ? -1 : 1)));
-    const w: Worker = { kind, body, tool, work: 0, leaving: false, queue: [] };
+    const w: Worker = { kind, body, tool, work: 0, leaving: false, queue: [], workBlend: 0, phase: 0 };
     this.workers.push(w);
     this.next(w);
   }
@@ -137,20 +141,23 @@ export class Housekeeping {
       if (w.work <= 0) this.next(w);
     }
     const working = !w.leaving && b.arrived && w.work > 0;
+    // Ease the work pose in and out (~0.4 s) and advance a slow, even stroke.
+    w.workBlend += ((working ? 1 : 0) - w.workBlend) * Math.min(1, dt * 5);
+    w.phase += dt * (w.kind === 'cleaner' ? 2.3 : 1.6);
+    const swing = Math.sin(w.phase);
+    // Procedural poses replace the generic interact clip; the idle clip keeps the legs natural.
+    b.gesture = working ? 'idle' : null;
     if (w.kind === 'cleaner') {
-      b.gesture = working ? 'interact-right' : null;
-      // Mop sweeps side to side while cleaning, carried upright while walking.
-      const swing = working ? Math.sin(time * 4.5) * 0.5 : 0;
-      w.tool.rotation.y += (swing - w.tool.rotation.y) * Math.min(1, dt * 12);
-      // Negative x-rotation leans the head forward (+z); more lean while mopping.
+      // Mop head sweeps in the same rhythm as the arms, carried upright while walking.
+      w.tool.rotation.y = swing * 0.45 * w.workBlend;
       const tilt = w.tool.getObjectByName('tilt')!;
-      tilt.rotation.x += ((working ? -0.6 : -0.35) - tilt.rotation.x) * Math.min(1, dt * 6);
-    } else {
-      // Janitor works at his cart at a stop (one steady motion; the looping
-      // pick-up clip made him bob up and down), pushes it otherwise.
-      b.gesture = working ? 'interact-right' : null;
+      tilt.rotation.x = -0.35 - 0.27 * w.workBlend;
     }
-    b.update(dt, time, { ride: w.kind === 'janitor' && !working });
+    const pose =
+      w.kind === 'cleaner'
+        ? { sweep: { weight: w.workBlend, swing } }
+        : { ride: w.workBlend < 0.5, wipe: { weight: w.workBlend, swing } };
+    b.update(dt, time, pose);
   }
 }
 
@@ -168,13 +175,13 @@ function part(parent: THREE.Object3D, geo: THREE.BufferGeometry, material: THREE
 const MOP_LENGTH = 0.95;
 
 /**
- * Mop held in the right hand (local -x). The outer group swings it side to
+ * Mop held with both hands in front (slightly right). The outer group swings it side to
  * side (yaw), the inner `tilt` group leans it forward; the stick hangs from
  * the hand so the head always stays attached at the bottom.
  */
 function buildMop(): THREE.Group {
   const swing = new THREE.Group();
-  swing.position.set(-0.32, 0.85, 0.28);
+  swing.position.set(-0.12, 0.82, 0.36);
   const tilt = new THREE.Group();
   tilt.name = 'tilt';
   swing.add(tilt);

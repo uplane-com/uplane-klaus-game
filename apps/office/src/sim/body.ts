@@ -284,7 +284,7 @@ export class Body<C extends Puppet = Character> {
     this.char.root.position.set(this.x, this.y, this.z);
     this.char.root.rotation.y = this.yaw;
     const seated = this.phase === 'seated';
-    this.char.update(dt, seated ? { ...pose, seated } : { handUp: pose.handUp, shake: pose.shake, ride: pose.ride }, time);
+    this.char.update(dt, seated ? { ...pose, seated } : { handUp: pose.handUp, shake: pose.shake, ride: pose.ride, sweep: pose.sweep, wipe: pose.wipe }, time);
   }
 
   private faceYaw(): number | null {

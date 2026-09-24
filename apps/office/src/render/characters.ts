@@ -82,7 +82,9 @@ export class CharacterLibrary {
 
   /** Facility staff (janitor, cleaner) with a fixed look. */
   createStaff(id: string, base: string, hue: number, pants: number[]): Character {
-    return new Character(id, this.bases, this.clips, this.acc, { base: BASES.indexOf(base), hue, pants });
+    const c = new Character(id, this.bases, this.clips, this.acc, { base: BASES.indexOf(base), hue, pants });
+    c.smooth = true; // few of them, always animate at full rate
+    return c;
   }
 
   /** Server-room operator on permanent watch. */
@@ -130,9 +132,23 @@ export interface Pose {
   thinking?: boolean;
   handUp?: boolean;
   shake?: boolean;
+  /**
+   * Two-handed work motions blended over the clip: `weight` 0..1 eases the pose
+   * in/out, `swing` -1..1 is the current phase of the stroke.
+   */
+  sweep?: { weight: number; swing: number };
+  wipe?: { weight: number; swing: number };
 }
 
 const armEuler = new THREE.Euler(0, 0, 0, 'YZX');
+const tmpQuat = new THREE.Quaternion();
+
+/** Like setArm, but blends towards the target pose by `w` (0 = keep current). */
+function blendArm(bone: THREE.Bone, side: 1 | -1, forward: number, drop: number, w: number) {
+  armEuler.set(0, -side * forward, -side * drop);
+  tmpQuat.setFromEuler(armEuler);
+  bone.quaternion.slerp(tmpQuat, w);
+}
 /**
  * Pose an arm from the rig's T-pose rest: `forward` swings it from sideways
  * to pointing ahead, `drop` lowers (positive) or raises (negative) the hand.
@@ -305,12 +321,14 @@ export class Character {
   /** Procedural layers on top of the clips. */
   /** Advance skeletons only every N frames (low quality); staggered per character. */
   static animEvery = 1;
+  /** Opt out of the reduced animation rate (staff, few characters). */
+  smooth = false;
   private animFrame = 0;
   private animDt = 0;
 
   update(dt: number, pose: Pose, t: number) {
     this.animDt += dt;
-    if (Character.animEvery > 1 && (this.animFrame++ + Math.floor(this.phase)) % Character.animEvery !== 0) return;
+    if (!this.smooth && Character.animEvery > 1 && (this.animFrame++ + Math.floor(this.phase)) % Character.animEvery !== 0) return;
     dt = this.animDt;
     this.animDt = 0;
     for (const [bone, q] of this.rest) bone.quaternion.copy(q);
@@ -340,6 +358,23 @@ export class Character {
     }
     if (pose.shake) {
       this.bones.head.rotateY(Math.sin(tt * 18) * 0.35);
+    }
+    if (pose.sweep && pose.sweep.weight > 0.001) {
+      // Mopping: both hands low in front on the handle, body turning with each stroke.
+      const { weight: w, swing: s } = pose.sweep;
+      blendArm(this.bones.armL, 1, 1.05 + s * 0.2, 0.62, w);
+      blendArm(this.bones.armR, -1, 1.2 - s * 0.2, 0.78, w);
+      this.bones.torso.rotateY(s * 0.22 * w);
+      this.bones.head.rotateY(-s * 0.12 * w);
+      this.bones.head.rotateX(0.18 * w);
+    }
+    if (pose.wipe && pose.wipe.weight > 0.001) {
+      // Wiping the cart: left hand on the handle, right hand making slow circles.
+      const { weight: w, swing: s } = pose.wipe;
+      blendArm(this.bones.armL, 1, 1.3, 0.3, w);
+      blendArm(this.bones.armR, -1, 1.3 + s * 0.18, 0.42 + Math.cos(tt * 2.2) * 0.08, w);
+      this.bones.torso.rotateY(s * 0.08 * w);
+      this.bones.head.rotateX(0.22 * w);
     }
   }
 
