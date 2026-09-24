@@ -303,7 +303,16 @@ export class Character {
   }
 
   /** Procedural layers on top of the clips. */
+  /** Advance skeletons only every N frames (low quality); staggered per character. */
+  static animEvery = 1;
+  private animFrame = 0;
+  private animDt = 0;
+
   update(dt: number, pose: Pose, t: number) {
+    this.animDt += dt;
+    if (Character.animEvery > 1 && (this.animFrame++ + Math.floor(this.phase)) % Character.animEvery !== 0) return;
+    dt = this.animDt;
+    this.animDt = 0;
     for (const [bone, q] of this.rest) bone.quaternion.copy(q);
     this.mixer.update(dt);
     const tt = t + this.phase;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import type { Quality } from '../config/quality';
 
 /** Renderer, isometric-style orthographic camera, controls and lights. */
 export class Stage {
@@ -12,12 +13,17 @@ export class Stage {
   readonly hemi: THREE.HemisphereLight;
   private readonly viewHeight = 70;
 
-  constructor(container: HTMLElement, center: THREE.Vector3) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  constructor(
+    container: HTMLElement,
+    center: THREE.Vector3,
+    readonly quality: Quality,
+  ) {
+    this.renderer = new THREE.WebGLRenderer({ antialias: quality.antialias, powerPreference: 'high-performance' });
+    // Lower quality renders fewer pixels and lets the browser scale the canvas up.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality.maxPixelRatio) * quality.renderScale);
     this.renderer.setSize(container.clientWidth, container.clientHeight);
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.enabled = quality.shadows;
+    this.renderer.shadowMap.type = quality.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.98;
     container.appendChild(this.renderer.domElement);
@@ -45,10 +51,12 @@ export class Stage {
     this.controls.update();
 
     // Soft studio reflections: glass, cars, the robot and water pick up highlights.
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.22;
-    pmrem.dispose();
+    if (quality.environment) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      this.scene.environmentIntensity = 0.22;
+      pmrem.dispose();
+    }
 
     this.hemi = new THREE.HemisphereLight('#f4f7ff', '#8a8f7a', 1.2);
     this.scene.add(this.hemi);
@@ -56,7 +64,7 @@ export class Stage {
     this.sun.position.copy(center).add(new THREE.Vector3(-45, 90, 35));
     this.sun.target.position.copy(center);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(4096, 4096);
+    this.sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
     const sc = this.sun.shadow.camera;
     sc.left = -80;
     sc.right = 80;

@@ -6,7 +6,9 @@ import { Navigation } from './nav/navigation';
 import { loadFurniture } from './render/assets';
 import { AlarmSystem } from './render/alarms';
 import { Cinematics } from './render/cinematics';
+import { readQuality } from './config/quality';
 import { DayCycle } from './render/dayCycle';
+import { DebugOverlay } from './ui/debug';
 import { Guards } from './render/guards';
 import { SeatedStaff } from './render/seatedStaff';
 import { Housekeeping } from './sim/housekeeping';
@@ -14,7 +16,7 @@ import { RobotVisitor } from './sim/robotVisitor';
 import { SlidingDoors } from './render/slidingDoors';
 import { Turnstiles } from './render/turnstiles';
 import { Smoke } from './render/smoke';
-import { CharacterLibrary } from './render/characters';
+import { Character, CharacterLibrary } from './render/characters';
 import { VehicleFactory } from './render/vehicles';
 import { OfficeView, loadLogo } from './render/office';
 import { Stage } from './render/stage';
@@ -23,6 +25,8 @@ import { AgentStore } from './sim/store';
 import { TransportSystem } from './sim/transport';
 import { Hud } from './ui/hud';
 import { buildLayout } from './world/layout';
+
+const urlParams = new URLSearchParams(location.search);
 
 async function main() {
   const app = document.getElementById('app')!;
@@ -43,7 +47,17 @@ async function main() {
     VehicleFactory.load(),
   ]);
 
-  const stage = new Stage(app, new THREE.Vector3(35, 0, 42));
+  // ?quality=low|medium|high (low for weak TV sticks), ?debug for the diagnostics overlay.
+  const quality = readQuality(urlParams);
+  Character.animEvery = quality.animEvery;
+  const stage = new Stage(app, new THREE.Vector3(35, 0, 42), quality);
+  // TV GPUs can drop the WebGL context under memory pressure: recover by reloading.
+  stage.renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    debug?.error('WebGL context lost, reloading…');
+    setTimeout(() => location.reload(), 5000);
+  });
+  const debug = urlParams.has('debug') ? new DebugOverlay(stage.renderer, quality, () => director.actors.size) : null;
   const office = new OfficeView(layout, furniture);
   stage.scene.add(office.group);
 
@@ -112,6 +126,8 @@ async function main() {
   });
 
   const hud = new Hud(app, stage, director, store);
+  const shadowsBox = document.querySelector<HTMLInputElement>('#shadows');
+  if (shadowsBox) shadowsBox.checked = quality.shadows;
   // Day/night from the real sun over San Francisco (?time=21:30 previews an SF time).
   const dayCycle = new DayCycle(stage, office, params.get('time'));
   dayCycle.onLevels = (sun, hemi) => {
@@ -169,11 +185,17 @@ async function main() {
     smoke.update(dt, incident, (canvasH * stage.camera.zoom) / (stage.camera.top - stage.camera.bottom));
     hud.update(dt);
   };
-  const loop = (now?: number) => {
+  // Frame cap (low quality: 30 fps) so weak players aren't pegged at 100%.
+  const minFrameMs = 1000 / quality.maxFps - 1;
+  let lastFrame = 0;
+  const loop = (now = performance.now()) => {
+    requestAnimationFrame(loop);
+    if (now - lastFrame < minFrameMs) return;
+    lastFrame = now;
     timer.update(now);
     step(Math.min(timer.getDelta(), 1 / 20));
     stage.render();
-    requestAnimationFrame(loop);
+    debug?.frame();
   };
   loop();
   // Debug: fast-forward the visualisation from the console, e.g. office.fastForward(10).
@@ -187,5 +209,7 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  document.getElementById('app')!.innerHTML = `<pre style="padding:20px;color:#b00">${String(err?.stack ?? err)}</pre>`;
+  document.getElementById('app')!.innerHTML = `<pre style="padding:20px;color:#b00;white-space:pre-wrap">${String(err?.stack ?? err)}</pre>`;
+  // Unattended screens retry on their own.
+  if (urlParams.has('kiosk')) setTimeout(() => location.reload(), 30_000);
 });

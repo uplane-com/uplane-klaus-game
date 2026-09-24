@@ -694,3 +694,19 @@ button.danger:hover {
 .kiosk .perf {
   display: none;
 }
+
+/* ?debug diagnostics (stays visible in kiosk mode). */
+.debug-overlay {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 50;
+  max-width: 60vw;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(10, 12, 18, 0.82);
+  color: #d7ffe0;
+  font: 12px/1.45 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
