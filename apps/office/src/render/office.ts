@@ -611,6 +611,19 @@ export class OfficeView {
           g.add(logo);
           break;
         }
+        case 'robotDock': {
+          // Round charging pad with a glowing ring + a pillar with a status screen behind it.
+          add(g, new THREE.CylinderGeometry(0.62, 0.66, 0.06, 24), std('#2b2f38', { metalness: 0.4, roughness: 0.4 }), 0, 0.03, 0);
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.025, 6, 32), new THREE.MeshBasicMaterial({ color: '#35c7ff', toneMapped: false }));
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.y = 0.065;
+          g.add(ring);
+          add(g, new THREE.BoxGeometry(0.9, 2.2, 0.3), std('#f2f3f5', { roughness: 0.3 }), 0, 1.1, -0.95);
+          const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.34), new THREE.MeshBasicMaterial({ color: '#35c7ff', toneMapped: false }));
+          screen.position.set(0, 1.55, -0.79);
+          g.add(screen);
+          break;
+        }
         case 'beanbag':
           continue;
       }

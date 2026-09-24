@@ -73,11 +73,11 @@ export class RobotPuppet {
     add(torso, new THREE.BoxGeometry(0.2, 0.02, 0.01), this.mat('#1a44ff', { emissive: '#1a44ff', emissiveIntensity: 0.8 }), 0, 0.46, 0.145);
     add(torso, new THREE.CylinderGeometry(0.05, 0.06, 0.08, 10), joint, 0, 0.66, 0);
 
-    // Head: white helmet with a black glossy face visor.
+    // Head: white helmet with a black glossy face visor (sphere segment centred on +z = front).
     const head = pivot(torso, 0, 0.8, 0);
     const skull = add(head, new THREE.SphereGeometry(0.14, 16, 12), shell, 0, 0, 0);
     skull.scale.set(0.95, 1.1, 1);
-    const face = add(head, new THREE.SphereGeometry(0.128, 16, 12, -Math.PI / 2.4, Math.PI / 1.2, Math.PI / 4, Math.PI / 2.1), visor, 0, -0.005, 0.02);
+    const face = add(head, new THREE.SphereGeometry(0.128, 16, 12, Math.PI / 2 - Math.PI / 2.4, Math.PI / 1.2, Math.PI / 4, Math.PI / 2.1), visor, 0, -0.005, 0.02);
     face.scale.set(0.97, 1.08, 1);
 
     // Arms: shoulder → elbow → forearm + hand.

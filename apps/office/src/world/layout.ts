@@ -44,7 +44,7 @@ export interface Rug {
 }
 
 export interface Prop {
-  kind: 'beanbag' | 'pingpong' | 'foosball' | 'lightbox' | 'floorLogo' | 'easel' | 'softbox' | 'cameraRig' | 'backdrop' | 'neon' | 'onAir' | 'foam' | 'mic' | 'newsDesk';
+  kind: 'beanbag' | 'pingpong' | 'foosball' | 'lightbox' | 'floorLogo' | 'easel' | 'softbox' | 'cameraRig' | 'backdrop' | 'neon' | 'onAir' | 'foam' | 'mic' | 'newsDesk' | 'robotDock';
   x: number;
   z: number;
   rot: number;
@@ -198,6 +198,8 @@ export interface OfficeLayout {
   guards: { x: number; z: number; yaw: number }[];
   /** Outside the east side exit: where housekeeping staff come and go. */
   serviceDoor: Vec2;
+  /** Charging dock in the east hallway where the office robot waits. */
+  robotDock: { x: number; z: number; yaw: number };
   /** Reception staff seats (always occupied, not agents). */
   receptionists: { x: number; z: number; yaw: number }[];
 }
@@ -1083,6 +1085,7 @@ export function buildLayout(seed = 7): OfficeLayout {
     guards: [],
     receptionists: [],
     serviceDoor: v2(BUILDING.x1 + 3, SIDE_EXIT_Z),
+    robotDock: { x: BUILDING.x1 - 1.4, z: 12, yaw: FACE.w },
     turnstiles: null,
   };
 
@@ -1202,6 +1205,11 @@ export function buildLayout(seed = 7): OfficeLayout {
     out.placements.push({ model: 'pottedPlant', x, z, rot: rng.float(0, 6) });
     out.obstacles.push({ x, z, w: 0.7, d: 0.7, h: OBSTACLE_NAV_HEIGHT });
   }
+
+  // Robot charging dock against the east wall: pillar is solid, the robot stands on the pad.
+  const dock = out.robotDock;
+  out.props.push({ kind: 'robotDock', x: dock.x, z: dock.z, rot: dock.yaw });
+  out.obstacles.push({ x: BUILDING.x1 - 0.45, z: dock.z, w: 0.5, d: 1.0, h: OBSTACLE_NAV_HEIGHT });
 
   buildTransport(out);
 
