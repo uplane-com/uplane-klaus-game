@@ -123,6 +123,12 @@ export class Hud {
     });
   }
 
+  /** Called with the floor point under the pointer (null when off the scene). */
+  onGroundHover: ((x: number | null, z: number | null) => void) | null = null;
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly groundHit = new THREE.Vector3();
+
   private bindPointer() {
     const canvas = this.stage.renderer.domElement;
     const ndc = (e: PointerEvent) => {
@@ -144,7 +150,12 @@ export class Hud {
       const p = ndc(e);
       this.hovered = this.director.pick(this.stage.camera, p.x, p.y, p.w, p.h);
       canvas.style.cursor = this.hovered ? 'pointer' : '';
+      // Where on the floor is the pointer? (room hover signs)
+      this.raycaster.setFromCamera(new THREE.Vector2(p.x, p.y), this.stage.camera);
+      const hit = this.raycaster.ray.intersectPlane(this.ground, this.groundHit);
+      this.onGroundHover?.(hit ? hit.x : null, hit ? hit.z : null);
     });
+    canvas.addEventListener('pointerleave', () => this.onGroundHover?.(null, null));
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.select(null);
       if (e.key === 'f' && this.selected) this.follow = !this.follow;

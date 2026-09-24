@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { PLAZA } from '../config/office';
 import { BIKE_RACK, BUS_STOP_X, HELIPAD, ROAD } from '../config/transport';
-import type { FurnitureModel } from '../config/scale';
+import { DEPTS } from '@office/events';
+import { GLASS_WALL_HEIGHT, type FurnitureModel } from '../config/scale';
 import type { Board, FloorPattern, OfficeLayout } from '../world/layout';
 import type { ModelProto } from './assets';
 
@@ -22,6 +23,9 @@ export class OfficeView {
   private readonly outdoor: { mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial; base: THREE.Color }[] = [];
   /** Pools of lamplight on the pavement (only visible after dark). */
   private lampPools: THREE.MeshBasicMaterial | null = null;
+  /** Per room: flat floor label + a sign that flips up to wall height on hover. */
+  private readonly signs = new Map<string, { flat: THREE.MeshBasicMaterial; pivot: THREE.Group; card: THREE.MeshBasicMaterial; t: number }>();
+  private hovered: string | null = null;
 
   constructor(
     private readonly layout: OfficeLayout,
@@ -89,7 +93,13 @@ export class OfficeView {
     this.screens.instanceColor!.needsUpdate = true;
   }
 
-  update(dt: number) {
+  /** Hovered room (or null): its name sign rises up from the floor. */
+  hoverRoom(id: string | null) {
+    this.hovered = id;
+  }
+
+  update(dt: number, camera?: THREE.Camera) {
+    this.animateSigns(dt, camera);
     this.waterTime += dt;
     this.jets.forEach((j, i) => {
       const s = 1 + Math.sin(this.waterTime * 3.1 + i * 1.7) * 0.12;
@@ -842,6 +852,44 @@ export class OfficeView {
       const z = door && (door.side === 'n' || door.side === 's') ? door.z + inward * 0.9 : room.z0 + 1;
       mesh.position.set(x, 0.03, z);
       this.group.add(mesh);
+
+      // Raised sign: hinged at its bottom edge on the label spot; flips upright
+      // (facing the camera side) and climbs to the top of the glass walls on hover.
+      const cardTex = signTexture(room.def.name, room.def.dept ? DEPTS[room.def.dept].color : '#1a44ff');
+      const cardMat = new THREE.MeshBasicMaterial({ map: cardTex, transparent: true, opacity: 0, depthTest: false, depthWrite: false, toneMapped: false });
+      const cw = 5.2;
+      const ch = cw * (160 / 832);
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(cw, ch).translate(0, ch / 2, 0), cardMat);
+      card.renderOrder = 20;
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 0.03, z);
+      pivot.rotation.x = -Math.PI / 2;
+      pivot.visible = false;
+      pivot.add(card);
+      this.group.add(pivot);
+      this.signs.set(room.def.id, { flat: mesh.material as THREE.MeshBasicMaterial, pivot, card: cardMat, t: 0 });
+    }
+  }
+
+  private readonly flatQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+
+  private animateSigns(dt: number, camera?: THREE.Camera) {
+    for (const [id, s] of this.signs) {
+      const target = id === this.hovered ? 1 : 0;
+      // Keep facing the camera while raised (the camera may orbit).
+      if (s.t === target && (!target || !camera)) continue;
+      s.t = target > s.t ? Math.min(1, s.t + dt / 0.45) : Math.max(0, s.t - dt / 0.35);
+      const k = s.t;
+      const smooth = k * k * (3 - 2 * k);
+      // Rise with a little overshoot; the card flips from the floor to face the camera.
+      const rise = target ? 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2) : smooth;
+      s.pivot.visible = k > 0.001;
+      if (camera) s.pivot.quaternion.slerpQuaternions(this.flatQuat, camera.quaternion, smooth);
+      else s.pivot.quaternion.copy(this.flatQuat);
+      s.pivot.position.y = 0.03 + rise * GLASS_WALL_HEIGHT;
+      s.pivot.scale.setScalar(0.9 + 0.35 * rise);
+      s.card.opacity = Math.min(1, k * 2.5);
+      s.flat.opacity = 1 - Math.min(1, k * 2);
     }
   }
 }
@@ -868,6 +916,35 @@ function canvasArt(accent: string): THREE.Texture {
   ctx.stroke();
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Room sign: white rounded card, department colour bar, bold room name. */
+function signTexture(name: string, accent: string): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = 832;
+  c.height = 160;
+  const ctx = c.getContext('2d')!;
+  const r = 36;
+  ctx.fillStyle = 'rgba(15, 18, 28, 0.18)';
+  ctx.beginPath();
+  ctx.roundRect(10, 14, 812, 140, r);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.roundRect(4, 4, 812, 140, r);
+  ctx.fill();
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.roundRect(34, 44, 16, 60, 8);
+  ctx.fill();
+  ctx.fillStyle = '#0f121c';
+  ctx.font = '700 72px Inter, system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name, 76, 78, 710);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
 

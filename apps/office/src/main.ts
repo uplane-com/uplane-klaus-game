@@ -127,6 +127,12 @@ async function main() {
   });
 
   const hud = new Hud(app, stage, director, store);
+  // Hovering a room raises its name sign up to wall height.
+  const roomList = [...layout.rooms.values()];
+  hud.onGroundHover = (x, z) => {
+    const room = x === null || z === null ? null : roomList.find((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
+    office.hoverRoom(room?.def.id ?? null);
+  };
   const shadowsBox = document.querySelector<HTMLInputElement>('#shadows');
   if (shadowsBox) shadowsBox.checked = quality.shadows !== 'off';
   // Day/night from the real sun over San Francisco (?time=21:30 previews an SF time).
@@ -165,7 +171,7 @@ async function main() {
     nav.update(dt);
     const zoom = stage.camera.zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
-    office.update(dt);
+    office.update(dt, stage.camera);
     dayTimer -= dt;
     if (dayTimer <= 0) {
       dayTimer = 15;
