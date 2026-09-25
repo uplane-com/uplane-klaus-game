@@ -25,6 +25,11 @@ const HIDDEN_ENVS = (process.env.GITHUB_HIDDEN_ENVIRONMENTS ?? 'staging,stage,st
   .filter(Boolean);
 const isHiddenEnv = (...names: (string | null | undefined)[]) =>
   names.some((n) => (n ?? '').toLowerCase().split(/[^a-z0-9]+/).some((word) => HIDDEN_ENVS.includes(word)));
+/** Production deploys come from the default branch, a tag or a commit SHA — anything else is a preview. */
+const isFeatureRef = (ref: string | null | undefined) =>
+  !!ref && !/^(main|master|production|prod|release|trunk)$/i.test(ref) && !/^[0-9a-f]{7,40}$/i.test(ref) && !/^v?\d+(\.\d+)*/.test(ref) && !/^refs\/tags\//.test(ref);
+/** Pull-request environments, e.g. "… - Staging-App-Backend PR #1001". */
+const isPrEnv = (env: string | null | undefined) => /\bpr\b|#\d+/i.test(env ?? '');
 
 export function verifySignature(secret: string, body: string, header: string | undefined): boolean {
   if (!header?.startsWith('sha256=')) return false;
@@ -69,8 +74,10 @@ export async function fromGithub(kind: string, delivery: string, payload: Record
     const job = payload.workflow_job as Job;
     const agentId = `gh-job-${job.id}`;
     const role: RoleId = DEPLOY_NAME.test(`${job.name} ${job.workflow_name ?? ''}`) ? 'deployer' : 'cicheck';
-    // Staging/preview deploy jobs are not shown (checks always are).
-    if (role === 'deployer' && isHiddenEnv(job.name, job.workflow_name, job.head_branch)) return [];
+    // Staging/preview deploy jobs are not shown (checks always are); remove any already shown.
+    if (role === 'deployer' && (isHiddenEnv(job.name, job.workflow_name, job.head_branch) || isFeatureRef(job.head_branch))) {
+      return (await agentState(agentId)) === 'active' ? [ev({ type: 'agent.stopped', agentId, reason: 'preview deploy (hidden)' })] : [];
+    }
     const name = clip(`${repo} · ${job.name}`, 120);
     const title = clip(`${job.workflow_name ?? 'Workflow'} · ${job.name}${job.head_branch ? ` (${job.head_branch})` : ''}`, 500);
     const task = { id: `gh-run-${job.run_id}-${job.id}`, title, pipeline: role === 'deployer' ? 'ops' : 'code', stage: role } as const;
@@ -115,8 +122,11 @@ export async function fromGithub(kind: string, delivery: string, payload: Record
     // Deployments created by an Actions job (environment:) are already shown via that job.
     if (`${status.log_url ?? ''} ${status.target_url ?? ''}`.includes('/actions/runs/')) return [];
     const dep = payload.deployment as Deployment;
-    if (isHiddenEnv(dep.environment)) return []; // staging/preview deployments are not shown
     const agentId = `gh-deploy-${dep.id}`;
+    // Staging / preview / pull-request deployments are not shown; remove any already shown.
+    if (isHiddenEnv(dep.environment) || isPrEnv(dep.environment) || isFeatureRef(dep.ref)) {
+      return (await agentState(agentId)) === 'active' ? [ev({ type: 'agent.stopped', agentId, reason: 'preview deploy (hidden)' })] : [];
+    }
     const name = clip(`${repo} → ${dep.environment}`, 120);
     const state = await agentState(agentId);
     const task = { id: `gh-deploy-${dep.id}`, title: clip(`Deploy ${dep.ref} to ${dep.environment}`, 500), pipeline: 'ops', stage: 'deployer' } as const;

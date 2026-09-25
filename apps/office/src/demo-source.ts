@@ -4,8 +4,8 @@ import { Rng } from './util/rng';
 /**
  * `?demo`: simulated Uplane agents on top of the real data, so the office always
  * has at least MIN_TOTAL characters. Runs only in this browser (nothing is sent
- * to the API). As real agents arrive, demo agents go home; there are no demo
- * incidents (alarms only come from real status events).
+ * to the API). As real agents arrive, demo agents go home. The demo is always
+ * calm: no incidents, no errors and nothing that needs a human.
  */
 
 const MIN_TOTAL = 100;
@@ -30,16 +30,15 @@ const STAGES: Record<Pipe, RoleId[]> = {
 const ROLE_WEIGHTS: Partial<Record<RoleId, number>> = { creative: 1.3, content: 1.1, adqa: 0.8, codegen: 1.1, codereview: 0.9, testing: 0.8, prreview: 0.5, comms: 0.9 };
 const PIPE_OF: Partial<Record<RoleId, Pipe>> = { creative: 'ad', content: 'ad', adqa: 'ad', codegen: 'code', codereview: 'code', testing: 'code', prreview: 'code', comms: 'comms' };
 
+/** Tool trips for demo agents. No server-room tools (api/database/ci/deploy): only real agents go there. */
 const TOOLS: Record<Pipe, ToolId[]> = {
-  ad: ['image_gen', 'image_gen', 'brainstorm', 'moodboard', 'photo_shoot', 'video_edit', 'web_search', 'api'],
-  code: ['ci', 'ci', 'database', 'api', 'docs', 'web_search', 'deploy'],
-  comms: ['web_search', 'docs', 'api', 'podcast', 'broadcast', 'brainstorm'],
+  ad: ['image_gen', 'image_gen', 'brainstorm', 'moodboard', 'photo_shoot', 'video_edit', 'web_search'],
+  code: ['docs', 'docs', 'web_search', 'brainstorm'],
+  comms: ['web_search', 'docs', 'podcast', 'broadcast', 'brainstorm'],
 };
 /** Studio/media sessions take longer than a quick lookup. */
 const LONG_TOOLS = new Set<ToolId>(['brainstorm', 'moodboard', 'photo_shoot', 'video_edit', 'podcast', 'broadcast']);
 
-const BLOCKERS = ['Needs brand approval', 'Waiting for client assets', 'Budget cap reached — approve increase?', 'Legal review of claim', 'Ad account access expired', 'PR needs human sign-off'];
-const ERRORS = ['Ad rejected by Meta policy', 'TikTok API rate limit', 'Landing page build failed', 'Flaky test: checkout flow', 'Creative export timed out'];
 const PEOPLE = ['Klaus', 'Lukas', 'the account team', 'a client', 'design lead', 'growth team'];
 
 interface DemoAgent {
@@ -142,12 +141,11 @@ export class DemoSource implements AgentEventSource {
     if (a.role === 'comms' && r < 0.4) return this.setActivity(a, { kind: 'messaging', with: this.rng.pick(PEOPLE) }, this.rng.float(8, 20));
     if (r < 0.45) return this.setActivity(a, { kind: 'working' }, this.rng.float(6, 16));
     if (r < 0.62) return this.setActivity(a, { kind: 'thinking' }, this.rng.float(3, 8));
-    if (r < 0.88) {
+    if (r < 0.9) {
       const tool = this.rng.pick(TOOLS[a.pipe]);
       return this.setActivity(a, { kind: 'tool', tool }, LONG_TOOLS.has(tool) ? this.rng.float(25, 45) : this.rng.float(5, 14));
     }
-    if (r < 0.95) return this.setActivity(a, { kind: 'blocked', reason: this.rng.pick(BLOCKERS) }, this.rng.float(12, 30));
-    this.setActivity(a, { kind: 'error', message: this.rng.pick(ERRORS) }, this.rng.float(3, 6));
+    this.setActivity(a, { kind: 'working' }, this.rng.float(6, 16));
   }
 
   /** Done with this stage: hand the task to the next role in the pipeline, or complete it. */
