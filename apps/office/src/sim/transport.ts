@@ -190,16 +190,18 @@ export class TransportSystem {
 
     const bus = oldest('bus');
     const busCount = this.pending.filter((p) => p.mode === 'bus').length;
-    if (bus && (busCount >= 14 || this.time - bus.since > 3)) {
+    // Only send a bus when a bay is free (two buses in one bay would overlap).
+    const usedBays = new Set(this.road.filter((v) => v.kind === 'bus' && v.state !== 'leave').map((v) => v.stopX));
+    const bay = BUS_BAYS.find((x) => !usedBays.has(x));
+    if (bus && bay !== undefined && (busCount >= 14 || this.time - bus.since > 3)) {
       const riders = take('bus', 20);
-      const used = new Set(this.road.filter((v) => v.kind === 'bus' && v.state !== 'leave').map((v) => v.stopX));
-      const bay = BUS_BAYS.find((x) => !used.has(x)) ?? BUS_STOP_X;
       this.spawnRoad('bus', bay, riders.map((p) => p.id), [], -1).pickupOpen = true;
     }
 
+    // Only send a car when a curb slot is free; otherwise riders wait a moment longer.
     const car = oldest('car');
-    if (car && this.time - car.since > 0.5) {
-      const k = this.freeSlot();
+    const k = car && this.time - car.since > 0.5 ? this.freeSlot() : -1;
+    if (k >= 0) {
       const riders = take('car', this.rng.int(1, 3));
       this.spawnRoad('car', CAR_SLOTS[k], riders.map((p) => p.id), [], k);
     }
@@ -219,7 +221,8 @@ export class TransportSystem {
 
   private freeSlot(): number {
     const free = CAR_SLOTS.map((_, k) => k).filter((k) => !this.slotBusy[k] && !this.layout.transport.carWait[k].occupant);
-    const k = free.length ? this.rng.pick(free) : this.rng.int(0, CAR_SLOTS.length - 1);
+    if (!free.length) return -1;
+    const k = this.rng.pick(free);
     this.slotBusy[k] = true;
     return k;
   }
@@ -233,9 +236,11 @@ export class TransportSystem {
       moved = false;
       for (const o of this.road) {
         if (o.dir !== v.dir || Math.abs(o.z - v.z) > o.mesh.halfWidth + v.mesh.halfWidth) continue;
-        const gap = o.mesh.halfLength + v.mesh.halfLength + 2;
+        const gap = o.mesh.halfLength + v.mesh.halfLength + 4;
         if (Math.abs(o.x - v.x) >= gap - 1e-3) continue;
         v.x = o.x - v.dir * gap;
+        // Join the queue at its speed instead of ramming it at cruise speed.
+        v.speed = Math.min(v.speed, o.speed);
         moved = true;
       }
     }
@@ -403,7 +408,9 @@ export class TransportSystem {
     v.x += v.speed * v.dir * dt;
 
     // Pull in to the curb when stopping, back out when leaving.
-    const nearStop = v.stopX !== null && v.state !== 'leave' && (v.stopX - v.x) * v.dir < 16;
+    // Pull in towards the curb only once every parked vehicle between us and our spot has been
+    // passed; otherwise we would drift sideways through the car or bus parked in the next spot.
+    const nearStop = v.stopX !== null && v.state !== 'leave' && (v.stopX - v.x) * v.dir < 16 && !this.parkedBetween(v);
     const zTarget = v.dir === 1 ? ROAD.oppositeLaneZ : nearStop || v.state === 'dwell' ? ROAD.stopZ : ROAD.laneZ;
     v.z += (zTarget - v.z) * (1 - Math.exp(-3 * dt));
 
@@ -468,6 +475,20 @@ export class TransportSystem {
     }
   }
 
+  /** A vehicle at the curb (or pulling in/out) between v and v's stop, or beside v. */
+  private parkedBetween(v: RoadVehicle): boolean {
+    for (const w of this.road) {
+      if (w === v || w.dir !== v.dir) continue;
+      if (Math.abs(w.z - ROAD.stopZ) > 1.2) continue; // only vehicles at/near the curb
+      const rel = (w.x - v.x) * v.dir; // > 0: ahead of v
+      const toStop = (v.stopX! - v.x) * v.dir;
+      const reach = w.mesh.halfLength + v.mesh.halfLength + 0.8;
+      // Beside or ahead of us, but not beyond our own stop spot (plus clearance).
+      if (rel > -reach && rel < toStop - reach) return true;
+    }
+    return false;
+  }
+
   /** Is there a gap in the travel lane to pull out of the curb? */
   private laneClear(v: RoadVehicle): boolean {
     for (const w of this.road) {
@@ -475,7 +496,8 @@ export class TransportSystem {
       if (Math.abs(w.z - ROAD.laneZ) > w.mesh.halfWidth + v.mesh.halfWidth) continue;
       const rel = (w.x - v.x) * v.dir;
       const clearance = w.mesh.halfLength + v.mesh.halfLength + 2;
-      if (rel > 0 && rel < clearance) return false; // someone right in front of us
+      // Anyone alongside (even standing, e.g. a long bus queued next to us) or right in front.
+      if (Math.abs(rel) < clearance) return false;
       // Someone coming up behind (vehicles standing still behind us are no danger).
       if (rel <= 0 && w.speed > 0.5 && -rel < clearance + w.speed * 1.6) return false;
     }
