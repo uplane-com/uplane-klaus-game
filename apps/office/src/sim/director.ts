@@ -48,6 +48,9 @@ export interface Actor {
   bikeSlot: BikeSlot | null;
   /** How this agent is getting home. */
   ticket: Ticket | null;
+  /** When the agent started heading home / was told to board (sim time), for jam timeouts. */
+  departSince: number;
+  boardSince: number;
   /** Handed over to the transport system (riding away). */
   riding: boolean;
   /** Last time this agent scanned its badge at the lobby gates. */
@@ -67,6 +70,11 @@ const SCREEN_COLORS: Record<string, string> = {
   away: '#33405a',
   empty: '#1b2130',
 };
+
+/** Seconds someone may try to reach the vehicle door before boarding anyway. */
+const BOARD_TIMEOUT = 12;
+/** Seconds someone may spend trying to leave before fading out (never stay stuck forever). */
+const DEPART_TIMEOUT = 120;
 
 export class Director {
   readonly actors = new Map<string, Actor>();
@@ -203,6 +211,8 @@ export class Director {
       arrivedBy: null,
       bikeSlot: null,
       ticket: null,
+      departSince: 0,
+      boardSince: 0,
       riding: false,
       lastScan: -Infinity,
     };
@@ -328,6 +338,7 @@ export class Director {
   private departureGoal(a: Actor): Goal {
     this.releaseAway(a);
     a.body.hurry();
+    if (!a.ticket) a.departSince = this.time;
     const t = (a.ticket ??= this.transport.requestDeparture(a.id, a.bikeSlot));
     if (t.mode === 'bike' && t.bikeSlot) {
       return { kind: 'point', pos: t.bikeSlot.approach, yaw: Math.PI, key: 'bike' };
@@ -348,7 +359,24 @@ export class Director {
       if (!this.transport.rideAway(a.id, a.body.char)) this.despawn(a);
       return;
     }
-    if (t.spot && a.body.arrived && g?.kind === 'spot' && g.spot === t.spot) t.ready = true;
+    // Waiting spot reached — or close enough while pinned in a crowd at the stop.
+    if (t.spot && !t.ready && g?.kind === 'spot' && g.spot === t.spot) {
+      if (a.body.arrived || Math.hypot(a.body.x - t.spot.pos.x, a.body.z - t.spot.pos.z) < 6) t.ready = true;
+    }
+    // Anti-jam: someone who can't get through the crowd to the door boards anyway after a while,
+    // and nobody keeps trying to leave forever.
+    if (t.boardAt) {
+      if (!a.boardSince) a.boardSince = this.time;
+      if (this.time - a.boardSince > BOARD_TIMEOUT) return this.leaveNow(a);
+    }
+    if (this.time - a.departSince > DEPART_TIMEOUT) this.leaveNow(a);
+  }
+
+  /** Fade out in place and free the ticket (counts as boarded). */
+  private leaveNow(a: Actor) {
+    if (a.body.gone || a.riding) return;
+    this.transport.boarded(a.id);
+    a.body.fadeOut();
   }
 
   // -- per frame ------------------------------------------------------------

@@ -90,6 +90,13 @@ export class Body<C extends Puppet = Character> {
     if (this.agent) this.nav.setHurry(this.agent, this.speed);
   }
 
+  /** Fade out where we stand (e.g. could not get through a crowd); becomes `gone`. */
+  fadeOut() {
+    if (this.phase === 'fading' || this.phase === 'gone') return;
+    this.trans = null;
+    this.phase = 'fading';
+  }
+
   /** Leave the crowd but keep the character (e.g. when riding off on a bike). */
   release() {
     if (this.agent) {

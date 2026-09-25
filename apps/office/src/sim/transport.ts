@@ -464,7 +464,9 @@ export class TransportSystem {
       t.boardAt = v.kind === 'bus' ? v2(v.x + v.dir * this.rng.pick(BUS_DOORS) + this.rng.float(-0.4, 0.4), d.z) : d;
     }
     const allIn = v.pickup.every((t) => t.boarded);
-    if (allIn ? v.dwellTimer > 1.2 : v.dwellTimer > (v.kind === 'bus' ? 14 : 30)) {
+    // An open bus with nobody on board yet waits a little for people still making their way to the stop.
+    const minDwell = v.kind === 'bus' && v.pickupOpen && v.pickup.length === 0 ? 8 : 1.2;
+    if (allIn ? v.dwellTimer > minDwell : v.dwellTimer > (v.kind === 'bus' ? 14 : 30)) {
       for (const t of v.pickup) {
         if (!t.boarded) {
           t.vehicle = null;
@@ -496,8 +498,9 @@ export class TransportSystem {
       if (Math.abs(w.z - ROAD.laneZ) > w.mesh.halfWidth + v.mesh.halfWidth) continue;
       const rel = (w.x - v.x) * v.dir;
       const clearance = w.mesh.halfLength + v.mesh.halfLength + 2;
-      // Anyone alongside (even standing, e.g. a long bus queued next to us) or right in front.
-      if (Math.abs(rel) < clearance) return false;
+      // Physically beside us (e.g. a long bus queued next to the car) — even if standing still.
+      if (Math.abs(rel) < w.mesh.halfLength + v.mesh.halfLength + 0.5) return false;
+      if (rel > 0 && rel < clearance) return false; // someone right in front of us
       // Someone coming up behind (vehicles standing still behind us are no danger).
       if (rel <= 0 && w.speed > 0.5 && -rel < clearance + w.speed * 1.6) return false;
     }
