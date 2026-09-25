@@ -111,6 +111,14 @@ gh api orgs/<org>/hooks -f name=web -F active=true -f 'events[]=workflow_job' -f
 Agents can also set `ttlSeconds` on `agent.started` / `agent.activity`: they are stopped automatically
 if nothing else arrives in time (instead of the default silence timeout).
 
+### Linear ticket wall
+
+The Linear room shows a cork board with the workspace's tickets (Todo / In progress / In review / Done
+in the last 24h), fed by a Linear webhook: Linear → Settings → API → Webhooks → new webhook with URL
+`https://uplane-klaus-game.fly.dev/v1/linear`, resource type **Issues**, all public teams; put its
+signing secret into `LINEAR_WEBHOOK_SECRET`. Optional `LINEAR_API_KEY` loads the currently open tickets
+on boot (otherwise the board fills as tickets change).
+
 ### Local development
 
 ```sh

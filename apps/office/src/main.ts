@@ -16,6 +16,7 @@ import { Housekeeping } from './sim/housekeeping';
 import { RobotVisitor } from './sim/robotVisitor';
 import { SlidingDoors } from './render/slidingDoors';
 import { Turnstiles } from './render/turnstiles';
+import { TicketWall } from './render/ticketWall';
 import { Smoke } from './render/smoke';
 import { Character, CharacterLibrary } from './render/characters';
 import { VehicleFactory } from './render/vehicles';
@@ -94,9 +95,22 @@ async function main() {
     for (const a of store.agents.values()) if (a.status === 'active' && !a.id.startsWith('demo-')) n++;
     return n;
   };
-  const demo = urlParams.has('demo') ? new DemoSource(countReal) : null;
+  const countRealTickets = () => {
+    let n = 0;
+    for (const t of store.tickets.values()) if (!t.id.startsWith('demo-') && (t.stateType === 'unstarted' || t.stateType === 'started')) n++;
+    return n;
+  };
+  const demo = urlParams.has('demo') ? new DemoSource(countReal, countRealTickets) : null;
   demo?.start((e) => store.apply(e));
 
+  // Linear ticket wall: redraw (throttled) when tickets change, and once a minute for the 24h Done window.
+  const ticketWall = layout.ticketWall ? new TicketWall(layout.ticketWall) : null;
+  if (ticketWall) stage.scene.add(ticketWall.group);
+  let ticketsDirty = true;
+  let ticketTimer = 0;
+  store.subscribe((e) => {
+    if (e.type === 'ticket.upserted' || e.type === 'ticket.removed') ticketsDirty = true;
+  });
   const guards = new Guards(stage.scene, chars, layout.guards);
   const reception = new SeatedStaff(stage.scene, (i) => chars.createReceptionist(i), layout.receptionists);
   // The server room is never unattended: one operator permanently holds a NOC seat.
@@ -153,7 +167,7 @@ async function main() {
   dayCycle.apply();
   hud.setClock(dayCycle.label);
   let dayTimer = 0;
-  if (!apiUrl && demo) hud.setConnection('live', 'Demo agents only');
+  if (!apiUrl && demo) hud.setConnection('live');
   else if (!apiUrl) hud.setConnection('offline', 'No data source. Open with ?api=<url>&key=<key>.');
   else {
     hud.setConnection(connection.state, connection.detail);
@@ -182,6 +196,12 @@ async function main() {
     const zoom = stage.camera.zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
     demo?.update(dt);
+    ticketTimer -= dt;
+    if (ticketWall && ((ticketsDirty && ticketTimer <= 59.5) || ticketTimer <= 0)) {
+      ticketWall.setTickets(store.tickets.values());
+      ticketsDirty = false;
+      ticketTimer = 60;
+    }
     office.update(dt);
     dayTimer -= dt;
     if (dayTimer <= 0) {

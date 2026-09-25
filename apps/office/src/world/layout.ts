@@ -44,7 +44,7 @@ export interface Rug {
 }
 
 export interface Prop {
-  kind: 'beanbag' | 'pingpong' | 'foosball' | 'lightbox' | 'floorLogo' | 'easel' | 'softbox' | 'cameraRig' | 'backdrop' | 'neon' | 'onAir' | 'foam' | 'mic' | 'newsDesk' | 'robotDock';
+  kind: 'beanbag' | 'pingpong' | 'foosball' | 'lightbox' | 'floorLogo' | 'easel' | 'softbox' | 'cameraRig' | 'backdrop' | 'neon' | 'onAir' | 'foam' | 'mic' | 'newsDesk' | 'robotDock' | 'linearLogo';
   x: number;
   z: number;
   rot: number;
@@ -198,6 +198,8 @@ export interface OfficeLayout {
   guards: { x: number; z: number; yaw: number }[];
   /** Outside the east side exit: where housekeeping staff come and go. */
   serviceDoor: Vec2;
+  /** Live Linear ticket screen (null if the office has no Linear room). */
+  ticketWall: { x: number; z: number; w: number; h: number } | null;
   /** Charging dock in the east hallway where the office robot waits. */
   robotDock: { x: number; z: number; yaw: number };
   /** Outdoor landscaping: planters along the façade, street lamps, a fountain, bushes. */
@@ -866,6 +868,42 @@ function buildStudio(rb: RoomBuilder) {
 }
 
 /**
+ * Linear room: a big live ticket screen along the north side (facing the camera),
+ * a stand-up table in the middle and a couple of bean bags.
+ */
+function buildLinearRoom(rb: RoomBuilder) {
+  const { x0, z0, x1, z1 } = rb;
+  // Screen right of the door, freestanding just inside the north wall.
+  const w = rb.def.w - 4.6;
+  const wall = { x: x1 - 0.6 - w / 2, z: z0 + 0.55, w, h: 2.7 };
+  rb.out.ticketWall = wall;
+  rb.obstacle(wall.x, wall.z, w + 0.2, 0.5);
+  // People discussing tickets in front of the screen.
+  for (const dx of [-1.6, 0, 1.6]) rb.spot(v2(wall.x + dx, wall.z + 1.9), FACE.n, false);
+  // Stand-up table.
+  const tx = (x0 + x1) / 2;
+  const tz = z0 + 8.5;
+  rb.out.tables.push({ x: tx, z: tz, w: 1.3, d: 1.3, h: 1.1, round: true });
+  rb.obstacle(tx, tz, 1.3, 1.3);
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + 0.4;
+    const r = 0.65 + APPROACH_PAD;
+    rb.spot(v2(tx + Math.sin(a) * r, tz + Math.cos(a) * r), a + Math.PI, false);
+  }
+  [
+    [x0 + 1.6, z1 - 2.2, '#5e6ad2'],
+    [x0 + 3.0, z1 - 1.6, '#f5a524'],
+  ].forEach(([x, z, color]) => {
+    rb.out.props.push({ kind: 'beanbag', x: x as number, z: z as number, rot: 0, color: color as string });
+    rb.obstacle(x as number, z as number, 1.1, 1.1);
+  });
+  rb.placeSolid('pottedPlant', x1 - 0.8, z1 - 0.8, 0.5);
+  rb.placeSolid('pottedPlant', x0 + 0.8, z0 + 4, 2.1);
+  // Linear logo inlaid in the floor.
+  rb.out.props.push({ kind: 'linearLogo', x: tx + 0.6, z: z1 - 3.4, rot: 0 });
+}
+
+/**
  * TV & podcast studio: a podcast booth (round table with mics, acoustic foam)
  * on the west side and a news set (anchor desk, video wall, studio cameras,
  * control desk) on the east side. Talent sits, crew stands at the cameras.
@@ -1088,6 +1126,7 @@ export function buildLayout(seed = 7): OfficeLayout {
     receptionists: [],
     serviceDoor: v2(BUILDING.x1 + 3, SIDE_EXIT_Z),
     robotDock: { x: BUILDING.x1 - 1.4, z: 12, yaw: FACE.w },
+    ticketWall: null,
     landscape: { planters: [], lamps: [], fountain: null, bushes: [], indoorTrees: [] },
     turnstiles: null,
   };
@@ -1126,6 +1165,9 @@ export function buildLayout(seed = 7): OfficeLayout {
       case 'media':
         buildMediaStudio(rb);
         break;
+      case 'linear':
+        buildLinearRoom(rb);
+        break;
     }
     const doors = resolveDoors(def);
     const first = doors[0];
@@ -1155,7 +1197,9 @@ export function buildLayout(seed = 7): OfficeLayout {
               ? 'terrazzo'
               : def.kind === 'media'
                 ? 'concrete'
-                : 'wood';
+                : def.kind === 'linear'
+                  ? 'terrazzo'
+                  : 'wood';
     out.floors.push({ x0: rb.x0, z0: rb.z0, x1: rb.x1, z1: rb.z1, color: def.floor, y: 0.01, pattern });
   }
 

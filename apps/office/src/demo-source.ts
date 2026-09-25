@@ -1,4 +1,4 @@
-import type { Activity, AgentEvent, AgentEventSource, RoleId, TaskRef, ToolId } from '@office/events';
+import type { Activity, AgentEvent, AgentEventSource, RoleId, TaskRef, Ticket, ToolId } from '@office/events';
 import { Rng } from './util/rng';
 
 /**
@@ -39,6 +39,33 @@ const TOOLS: Record<Pipe, ToolId[]> = {
 /** Studio/media sessions take longer than a quick lookup. */
 const LONG_TOOLS = new Set<ToolId>(['brainstorm', 'moodboard', 'photo_shoot', 'video_edit', 'podcast', 'broadcast']);
 
+/** Demo Linear tickets (only while there are few real open tickets). */
+const TICKET_TITLES = [
+  'Meta ads: support 9:16 video placements',
+  'TikTok creative export fails for >60s videos',
+  'Landing page builder: add testimonial block',
+  'Budget allocator: cap daily shift per campaign',
+  'Google Ads: sync negative keywords',
+  'Brand kit: auto-detect fonts from website',
+  'Creative QA: flag low-contrast text',
+  'Weekly report: add ROAS trend chart',
+  'Onboarding: connect Meta Business account',
+  'Ad copy: respect max headline length per channel',
+  'Landing page: faster first load on mobile',
+  'Pause fatigued creatives automatically',
+  'Slack notification when a campaign goes live',
+  'Retargeting audiences from site visitors',
+  'A/B test: headline variants on Google',
+  'Dashboard: spend vs. budget per client',
+];
+const REAL_TICKETS_ENOUGH = 10;
+const TICKET_FLOW: { stateType: Ticket['stateType']; stateName: string }[] = [
+  { stateType: 'unstarted', stateName: 'Todo' },
+  { stateType: 'started', stateName: 'In Progress' },
+  { stateType: 'started', stateName: 'In Review' },
+  { stateType: 'completed', stateName: 'Done' },
+];
+
 const PEOPLE = ['Klaus', 'Lukas', 'the account team', 'a client', 'design lead', 'growth team'];
 
 interface DemoAgent {
@@ -48,7 +75,7 @@ interface DemoAgent {
   task: TaskRef | null;
   /** Seconds until the current activity ends. */
   left: number;
-  /** Tasks to finish before going home. */
+  /** Seconds left before this agent goes home (after finishing its current task). */
   shift: number;
   meeting: boolean;
 }
@@ -62,14 +89,24 @@ export class DemoSource implements AgentEventSource {
   private arrivalBudget = 0;
   private meetingCooldown = 25;
 
-  /** `realCount` = active agents that came from the API. */
-  constructor(private readonly realCount: () => number) {}
+  private readonly tickets = new Map<string, { t: Ticket; step: number; doneAt: number }>();
+  private ticketTimer = 4;
+  private nextTicket = 1231;
+
+  /** `realCount` = active agents that came from the API; `realTickets` = open real Linear tickets. */
+  constructor(
+    private readonly realCount: () => number,
+    private readonly realTickets: () => number = () => 0,
+  ) {}
 
   start(emit: (e: AgentEvent) => void) {
     this.emit = emit;
     // Start with part of the crowd already at work, the rest arrives over time.
     const initial = Math.max(0, Math.min(60, MIN_TOTAL - this.realCount()));
     for (let i = 0; i < initial; i++) this.spawn(true);
+    if (this.realTickets() < REAL_TICKETS_ENOUGH) {
+      [0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3].forEach((step) => this.addTicket(step));
+    }
   }
 
   stop() {
@@ -102,6 +139,57 @@ export class DemoSource implements AgentEventSource {
       this.startMeeting();
     }
     for (const a of [...this.agents.values()]) this.tick(a, dt);
+    this.updateTickets(dt);
+  }
+
+  // -- demo tickets ---------------------------------------------------------------
+
+  private addTicket(step: number) {
+    const f = TICKET_FLOW[step];
+    const t: Ticket = {
+      id: `${PREFIX}t-${this.nextTicket}`,
+      key: `UPL-${this.nextTicket++}`,
+      title: this.rng.pick(TICKET_TITLES),
+      stateType: f.stateType,
+      stateName: f.stateName,
+      priority: this.rng.pick([2, 3, 3, 4, 0]),
+      team: 'UPL',
+      updatedAt: Date.now() - this.rng.int(0, 3600_000),
+    };
+    this.tickets.set(t.id, { t, step, doneAt: step === 3 ? Date.now() : 0 });
+    this.send({ type: 'ticket.upserted', ticket: t });
+  }
+
+  private updateTickets(dt: number) {
+    if (this.realTickets() >= REAL_TICKETS_ENOUGH) {
+      // Enough real tickets: the demo steps aside.
+      for (const id of [...this.tickets.keys()]) {
+        this.tickets.delete(id);
+        this.send({ type: 'ticket.removed', ticketId: id });
+      }
+      return;
+    }
+    this.ticketTimer -= dt;
+    if (this.ticketTimer > 0) return;
+    this.ticketTimer = this.rng.float(10, 18);
+    // Move one ticket a column to the right.
+    const moving = [...this.tickets.values()].filter((x) => x.step < 3);
+    if (moving.length) {
+      const x = this.rng.pick(moving);
+      x.step++;
+      const f = TICKET_FLOW[x.step];
+      x.t = { ...x.t, stateType: f.stateType, stateName: f.stateName, updatedAt: Date.now() };
+      if (x.step === 3) x.doneAt = Date.now();
+      this.send({ type: 'ticket.upserted', ticket: x.t });
+    }
+    // Clear old done tickets and keep the Todo column filled.
+    for (const [id, x] of this.tickets) {
+      if (x.step === 3 && Date.now() - x.doneAt > 4 * 60_000) {
+        this.tickets.delete(id);
+        this.send({ type: 'ticket.removed', ticketId: id });
+      }
+    }
+    if ([...this.tickets.values()].filter((x) => x.step === 0).length < 4) this.addTicket(0);
   }
 
   // -- lifecycle --------------------------------------------------------------
@@ -110,7 +198,7 @@ export class DemoSource implements AgentEventSource {
     const role = this.rng.weighted(Object.keys(ROLE_WEIGHTS) as RoleId[], (r) => ROLE_WEIGHTS[r] ?? 0);
     const id = `${PREFIX}${this.nextId++}`;
     const name = `${this.rng.pick(FIRST)} ${LAST[this.rng.int(0, LAST.length - 1)]}.`;
-    const a: DemoAgent = { id, role, pipe: PIPE_OF[role]!, task: null, left: this.rng.float(1, 4), shift: this.rng.int(3, 8), meeting: false };
+    const a: DemoAgent = { id, role, pipe: PIPE_OF[role]!, task: null, left: this.rng.float(1, 4), shift: this.rng.float(3 * 60, 20 * 60), meeting: false };
     this.agents.set(id, a);
     this.send({ type: 'agent.started', agent: { id, name, role }, alreadyRunning });
     // Stage-one roles start their own work; later stages wait for a handoff (or pick up a review).
@@ -126,6 +214,7 @@ export class DemoSource implements AgentEventSource {
   // -- work -----------------------------------------------------------------------
 
   private tick(a: DemoAgent, dt: number) {
+    a.shift -= dt;
     a.left -= dt;
     if (a.left > 0) return;
     if (a.meeting) a.meeting = false;
@@ -160,7 +249,6 @@ export class DemoSource implements AgentEventSource {
     }
     this.send({ type: 'agent.task_completed', agentId: a.id, taskId: task.id });
     a.task = null;
-    a.shift--;
     this.setActivity(a, { kind: this.rng.chance(0.5) ? 'idle' : 'working' }, this.rng.float(4, 10));
   }
 

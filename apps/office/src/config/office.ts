@@ -6,7 +6,7 @@ import type { DeptId } from '@office/events';
  * generated from `kind`, so adding a room is a config change only.
  */
 
-export type RoomKind = 'work' | 'meeting' | 'library' | 'server' | 'lounge' | 'lobby' | 'studio' | 'media';
+export type RoomKind = 'work' | 'meeting' | 'library' | 'server' | 'lounge' | 'lobby' | 'studio' | 'media' | 'linear';
 export type Side = 'n' | 's' | 'e' | 'w';
 
 export interface DoorDef {
@@ -57,7 +57,8 @@ export const ROOMS: RoomDef[] = [
   { id: 'comms', name: 'Comms', kind: 'work', dept: 'comms', x: 0, z: R3, w: 22, d: 16, doors: [{ side: 'n' }], floor: '#dcefe3' },
   { id: 'lobby', name: 'Lobby', kind: 'lobby', x: 22, z: R3, w: 22, d: 16, doors: [{ side: 'n', t: 0.3, width: 4 }, { side: 'n', t: 0.72, width: 4 }], floor: '#ebe7df' },
   { id: 'lounge', name: 'Coffee Lounge', kind: 'lounge', x: 44, z: R3, w: 30, d: 16, doors: [{ side: 'n', t: 0.3 }, { side: 'n', t: 0.72 }], floor: '#f0e5cc' },
-  { id: 'meeting-b', name: 'Meeting B', kind: 'meeting', x: 74, z: R3, w: 22, d: 16, doors: [{ side: 'n' }], floor: '#e4e0f0' },
+  { id: 'linear', name: 'Linear', kind: 'linear', x: 74, z: R3, w: 10, d: 16, doors: [{ side: 'n', t: 0.2, width: 3 }], floor: '#ecebfa' },
+  { id: 'meeting-b', name: 'Meeting B', kind: 'meeting', x: 84, z: R3, w: 12, d: 16, doors: [{ side: 'n' }], floor: '#e4e0f0' },
 
   // West wing, next to the Ad Studio — creative loft (spans rows 1–2) + workshop room
   {

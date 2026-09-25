@@ -1,4 +1,4 @@
-import type { Activity, RoleId, ServiceStatus, SystemStatus, TaskRef } from '@office/events';
+import type { Activity, RoleId, ServiceStatus, SystemStatus, TaskRef, Ticket } from '@office/events';
 import { sql } from './db';
 
 export interface Snapshot {
@@ -14,6 +14,8 @@ export interface Snapshot {
     startedAt: string;
   }[];
   system: { status: SystemStatus; services: ServiceStatus[]; message: string | null; since: string } | null;
+  /** Open Linear tickets + those finished in the last 24h (newest first, max 200). */
+  tickets: Ticket[];
 }
 
 /** Current state of the office, consistent with the returned cursor. */
@@ -25,6 +27,22 @@ export async function snapshot(): Promise<Snapshot> {
       from agents where status = 'active' order by started_at`;
     const [system] = await tx<NonNullable<Snapshot['system']>[]>`
       select status, services, message, since from system_status where id = 1`;
-    return { cursor: Number(cursor ?? 0), agents: [...agents], system: system ?? null };
+    const tickets = await tx<(Omit<Ticket, 'updatedAt' | 'team' | 'assignee' | 'url'> & { updatedAt: Date; team: string | null; assignee: string | null; url: string | null })[]>`
+      select id, key, title, state_name as "stateName", state_type as "stateType", priority, team, assignee, url, updated_at as "updatedAt"
+      from tickets
+      where state_type <> 'canceled' and (state_type <> 'completed' or updated_at > now() - interval '24 hours')
+      order by updated_at desc limit 200`;
+    return {
+      cursor: Number(cursor ?? 0),
+      agents: [...agents],
+      system: system ?? null,
+      tickets: tickets.map((t) => ({
+        ...t,
+        updatedAt: t.updatedAt.getTime(),
+        team: t.team ?? undefined,
+        assignee: t.assignee ?? undefined,
+        url: t.url ?? undefined,
+      })),
+    };
   });
 }

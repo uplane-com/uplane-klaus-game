@@ -1,5 +1,5 @@
 import { ROLES, TOOL_LABELS } from '@office/events';
-import type { Activity, AgentEvent, RoleId, ServiceStatus, SystemStatus, TaskRef } from '@office/events';
+import type { Activity, AgentEvent, RoleId, ServiceStatus, SystemStatus, TaskRef, Ticket } from '@office/events';
 
 /**
  * Pure data view of all agents, built only from events. Knows nothing about
@@ -39,6 +39,8 @@ export interface SystemState {
 
 export class AgentStore {
   readonly agents = new Map<string, AgentRecord>();
+  /** Linear tickets for the ticket wall. */
+  readonly tickets = new Map<string, Ticket>();
   system: SystemState = { status: 'operational', services: [], message: '', since: 0 };
   private listeners = new Set<StoreListener>();
 
@@ -106,6 +108,14 @@ export class AgentStore {
         this.system = { ...this.system, status: event.status, services: event.services, message: event.message ?? '' };
         break;
       }
+      case 'ticket.upserted': {
+        const prev = this.tickets.get(event.ticket.id);
+        if (!prev || prev.updatedAt <= event.ticket.updatedAt) this.tickets.set(event.ticket.id, event.ticket);
+        break;
+      }
+      case 'ticket.removed':
+        this.tickets.delete(event.ticketId);
+        break;
       case 'agent.stopped': {
         rec = this.agents.get(event.agentId);
         if (!rec) return;

@@ -77,6 +77,27 @@ export type SystemStatus = z.infer<typeof SystemStatus>;
 export const ServiceStatus = z.object({ name: z.string().min(1).max(120), status: SystemStatus });
 export type ServiceStatus = z.infer<typeof ServiceStatus>;
 
+/** A Linear ticket (issue) for the ticket wall. */
+export const TicketStateType = z.enum(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled']);
+export type TicketStateType = z.infer<typeof TicketStateType>;
+
+export const Ticket = z.object({
+  id: z.string().min(1).max(128),
+  /** Human key, e.g. "ENG-123". */
+  key: z.string().min(1).max(32),
+  title: text,
+  stateName: z.string().min(1).max(80),
+  stateType: TicketStateType,
+  /** Linear priority: 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+  priority: z.number().int().min(0).max(4),
+  team: z.string().max(32).optional(),
+  assignee: z.string().max(120).optional(),
+  url: z.string().max(500).optional(),
+  /** Epoch ms of the last change. */
+  updatedAt: z.number().int().nonnegative(),
+});
+export type Ticket = z.infer<typeof Ticket>;
+
 /** Fields every event carries. `id` makes retries idempotent; `ts` is epoch ms. */
 const base = {
   id: z.uuid().optional(),
@@ -105,6 +126,8 @@ export const AgentEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('agent.task_completed'), agentId, taskId: z.string().min(1).max(128) }),
   z.object({ ...base, type: z.literal('agent.heartbeat'), agentId }),
   z.object({ ...base, type: z.literal('agent.stopped'), agentId, reason: text.optional() }),
+  z.object({ ...base, type: z.literal('ticket.upserted'), ticket: Ticket }),
+  z.object({ ...base, type: z.literal('ticket.removed'), ticketId: z.string().min(1).max(128) }),
   z.object({
     ...base,
     type: z.literal('system.status'),

@@ -1,9 +1,10 @@
-import type { Activity, AgentEvent, AgentEventSource, RoleId, ServiceStatus, SystemStatus, TaskRef } from '@office/events';
+import type { Activity, AgentEvent, AgentEventSource, RoleId, ServiceStatus, SystemStatus, TaskRef, Ticket } from '@office/events';
 
 interface Snapshot {
   cursor: number;
   agents: { id: string; name: string; role: RoleId; activity: Activity; task: TaskRef | null }[];
   system: { status: SystemStatus; services: ServiceStatus[]; message: string | null } | null;
+  tickets?: Ticket[];
 }
 
 /**
@@ -57,6 +58,7 @@ export class ApiEventSource implements AgentEventSource {
     if (snap.system) {
       emit({ type: 'system.status', ts, status: snap.system.status, services: snap.system.services, message: snap.system.message ?? undefined });
     }
+    for (const ticket of snap.tickets ?? []) emit({ type: 'ticket.upserted', ts, ticket });
     this.cursor = snap.cursor;
 
     this.es = new EventSource(this.url('/v1/stream', { after: String(snap.cursor) }));

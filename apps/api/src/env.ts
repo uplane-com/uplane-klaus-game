@@ -14,4 +14,8 @@ export const env = {
   staticDir: process.env.STATIC_DIR || null,
   /** Shared secret of the GitHub org webhook (POST /v1/github). */
   githubWebhookSecret: process.env.GITHUB_WEBHOOK_SECRET || null,
+  /** Signing secret of the Linear webhook (POST /v1/linear). */
+  linearWebhookSecret: process.env.LINEAR_WEBHOOK_SECRET || null,
+  /** Optional: Linear API key to backfill open tickets on boot. */
+  linearApiKey: process.env.LINEAR_API_KEY || null,
 };

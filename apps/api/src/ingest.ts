@@ -39,6 +39,9 @@ function agentOf(e: AgentEvent): string | null {
       return e.fromId;
     case 'system.status':
       return e.reportedBy ?? null;
+    case 'ticket.upserted':
+    case 'ticket.removed':
+      return null;
     default:
       return e.agentId;
   }
@@ -75,6 +78,21 @@ async function project(tx: TransactionSql, e: AgentEvent) {
       break;
     case 'agent.stopped':
       await tx`update agents set status = 'stopped', stopped_at = ${ts}, activity = '{"kind":"idle"}', last_seen_at = ${ts} where id = ${e.agentId}`;
+      break;
+    case 'ticket.upserted': {
+      const t = e.ticket;
+      // Ignore out-of-order deliveries (an older version must not overwrite a newer one).
+      await tx`
+        insert into tickets (id, key, title, state_name, state_type, priority, team, assignee, url, updated_at)
+        values (${t.id}, ${t.key}, ${t.title}, ${t.stateName}, ${t.stateType}, ${t.priority}, ${t.team ?? null}, ${t.assignee ?? null}, ${t.url ?? null}, ${new Date(t.updatedAt)})
+        on conflict (id) do update set
+          key = excluded.key, title = excluded.title, state_name = excluded.state_name, state_type = excluded.state_type,
+          priority = excluded.priority, team = excluded.team, assignee = excluded.assignee, url = excluded.url, updated_at = excluded.updated_at
+        where tickets.updated_at <= excluded.updated_at`;
+      break;
+    }
+    case 'ticket.removed':
+      await tx`delete from tickets where id = ${e.ticketId}`;
       break;
     case 'system.status':
       await tx`

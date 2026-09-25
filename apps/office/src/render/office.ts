@@ -4,6 +4,7 @@ import { BIKE_RACK, BUS_STOP_X, HELIPAD, ROAD } from '../config/transport';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { GLASS_WALL_HEIGHT, type FurnitureModel } from '../config/scale';
+import { drawLinearLogo } from './ticketWall';
 import type { Board, FloorPattern, OfficeLayout } from '../world/layout';
 import type { ModelProto } from './assets';
 
@@ -827,6 +828,27 @@ export class OfficeView {
           const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.34), new THREE.MeshBasicMaterial({ color: '#35c7ff', toneMapped: false }));
           screen.position.set(0, 1.55, -0.79);
           g.add(screen);
+          break;
+        }
+        case 'linearLogo': {
+          // Logo + wordmark inlaid in the floor.
+          const c = document.createElement('canvas');
+          c.width = 1024;
+          c.height = 256;
+          const ctx2 = c.getContext('2d')!;
+          drawLinearLogo(ctx2, 16, 24, 208);
+          ctx2.fillStyle = '#16171d';
+          ctx2.font = '700 150px Inter, system-ui, sans-serif';
+          ctx2.textBaseline = 'middle';
+          ctx2.fillText('Linear', 260, 136);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.anisotropy = 8;
+          const plane = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.5), new THREE.MeshStandardMaterial({ map: tex, transparent: true, opacity: 0.92, roughness: 0.6, depthWrite: false }));
+          plane.rotation.x = -Math.PI / 2;
+          plane.position.y = 0.026;
+          plane.receiveShadow = true;
+          g.add(plane);
           break;
         }
         case 'beanbag':

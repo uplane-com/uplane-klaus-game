@@ -11,6 +11,7 @@ import { sql } from './db';
 import { env } from './env';
 import { fromGithub, verifySignature } from './github';
 import { ingest } from './ingest';
+import { backfillLinear, fromLinear, isFresh, verifyLinear } from './linear';
 import { migrate } from './migrate';
 import { snapshot } from './snapshot';
 import { Broadcaster } from './stream';
@@ -56,6 +57,21 @@ app.post('/v1/github', bodyLimit({ maxSize: 10 * 1024 * 1024 }), async (c) => {
   if (kind === 'ping') return c.json({ ok: true });
   const delivery = c.req.header('x-github-delivery') ?? crypto.randomUUID();
   const events = await fromGithub(kind, delivery, JSON.parse(body));
+  if (!events.length) return c.json({ accepted: 0, ignored: true });
+  const parsed = EventBatch.safeParse({ events });
+  if (!parsed.success) return c.json({ error: 'mapping produced invalid events', issues: z.treeifyError(parsed.error) }, 500);
+  return c.json(await ingest(parsed.data.events));
+});
+
+/** Linear workspace webhook (resource type Issue) → the ticket wall. */
+app.post('/v1/linear', bodyLimit({ maxSize: 5 * 1024 * 1024 }), async (c) => {
+  const secret = env.linearWebhookSecret;
+  if (!secret) return c.json({ error: 'LINEAR_WEBHOOK_SECRET is not configured' }, 503);
+  const body = await c.req.text();
+  if (!verifyLinear(secret, body, c.req.header('linear-signature'))) return c.json({ error: 'bad signature' }, 401);
+  const payload = JSON.parse(body);
+  if (!isFresh(payload.webhookTimestamp)) return c.json({ error: 'stale delivery' }, 400);
+  const events = fromLinear(c.req.header('linear-event') ?? '', c.req.header('linear-delivery') ?? crypto.randomUUID(), payload);
   if (!events.length) return c.json({ accepted: 0, ignored: true });
   const parsed = EventBatch.safeParse({ events });
   if (!parsed.success) return c.json({ error: 'mapping produced invalid events', issues: z.treeifyError(parsed.error) }, 500);
@@ -149,6 +165,14 @@ async function boot() {
       await migrate();
       await broadcaster.start();
       startSweeper();
+      if (env.linearApiKey) {
+        backfillLinear(env.linearApiKey)
+          .then(async (events) => {
+            const parsed = EventBatch.safeParse({ events: events.slice(0, 500) });
+            if (parsed.success && events.length) console.log('linear backfill', await ingest(parsed.data.events));
+          })
+          .catch((err) => console.error('linear backfill failed', err));
+      }
       ready = true;
       bootError = null;
       console.log('office api: database ready');
