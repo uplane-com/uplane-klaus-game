@@ -96,6 +96,8 @@ content type JSON, secret = `GITHUB_WEBHOOK_SECRET`). Every job becomes a charac
 checks work in the Testing room, jobs named deploy/release/publish and GitHub deployments go to
 the server room. Success → the character leaves; failure → red ❗ ("needs a human") for 2 minutes,
 then it leaves. Deployments created by an Actions job are shown via that job only.
+Staging/preview deploys are hidden (environment, or deploy job/workflow/branch names containing
+staging, stage, stg, preview, dev, develop, development, qa or sandbox; override with `GITHUB_HIDDEN_ENVIRONMENTS`).
 
 ```sh
 fly secrets set GITHUB_WEBHOOK_SECRET=$(openssl rand -hex 32)

@@ -14,6 +14,17 @@ const JOB_TTL = 6 * 3600;
 const FAILURE_TTL = 120;
 const DEPLOY_TTL = 2 * 3600;
 const DEPLOY_NAME = /deploy|release|publish|rollout/i;
+/**
+ * Non-production deployments are not shown. Matched as whole words against the
+ * environment name, or for Actions deploy jobs against job/workflow/branch names.
+ * Override with GITHUB_HIDDEN_ENVIRONMENTS (comma-separated).
+ */
+const HIDDEN_ENVS = (process.env.GITHUB_HIDDEN_ENVIRONMENTS ?? 'staging,stage,stg,preview,dev,develop,development,qa,sandbox')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+const isHiddenEnv = (...names: (string | null | undefined)[]) =>
+  names.some((n) => (n ?? '').toLowerCase().split(/[^a-z0-9]+/).some((word) => HIDDEN_ENVS.includes(word)));
 
 export function verifySignature(secret: string, body: string, header: string | undefined): boolean {
   if (!header?.startsWith('sha256=')) return false;
@@ -58,6 +69,8 @@ export async function fromGithub(kind: string, delivery: string, payload: Record
     const job = payload.workflow_job as Job;
     const agentId = `gh-job-${job.id}`;
     const role: RoleId = DEPLOY_NAME.test(`${job.name} ${job.workflow_name ?? ''}`) ? 'deployer' : 'cicheck';
+    // Staging/preview deploy jobs are not shown (checks always are).
+    if (role === 'deployer' && isHiddenEnv(job.name, job.workflow_name, job.head_branch)) return [];
     const name = clip(`${repo} · ${job.name}`, 120);
     const title = clip(`${job.workflow_name ?? 'Workflow'} · ${job.name}${job.head_branch ? ` (${job.head_branch})` : ''}`, 500);
     const task = { id: `gh-run-${job.run_id}-${job.id}`, title, pipeline: role === 'deployer' ? 'ops' : 'code', stage: role } as const;
@@ -102,6 +115,7 @@ export async function fromGithub(kind: string, delivery: string, payload: Record
     // Deployments created by an Actions job (environment:) are already shown via that job.
     if (`${status.log_url ?? ''} ${status.target_url ?? ''}`.includes('/actions/runs/')) return [];
     const dep = payload.deployment as Deployment;
+    if (isHiddenEnv(dep.environment)) return []; // staging/preview deployments are not shown
     const agentId = `gh-deploy-${dep.id}`;
     const name = clip(`${repo} → ${dep.environment}`, 120);
     const state = await agentState(agentId);
