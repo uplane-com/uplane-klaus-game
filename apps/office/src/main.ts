@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import type { AgentEventSource } from '@office/events';
 import { ApiEventSource, type ConnectionState } from './api-source';
+import { DemoSource } from './demo-source';
 import { Navigation } from './nav/navigation';
 import { loadFurniture } from './render/assets';
 import { AlarmSystem } from './render/alarms';
@@ -87,6 +88,14 @@ async function main() {
   };
   const source: AgentEventSource | null = apiUrl ? new ApiEventSource(apiUrl, apiKey, onConnection) : null;
   await source?.start((e) => store.apply(e));
+  // ?demo: simulated Uplane agents on top of the real data (at least 100 in total, browser-only).
+  const countReal = () => {
+    let n = 0;
+    for (const a of store.agents.values()) if (a.status === 'active' && !a.id.startsWith('demo-')) n++;
+    return n;
+  };
+  const demo = urlParams.has('demo') ? new DemoSource(countReal) : null;
+  demo?.start((e) => store.apply(e));
 
   const guards = new Guards(stage.scene, chars, layout.guards);
   const reception = new SeatedStaff(stage.scene, (i) => chars.createReceptionist(i), layout.receptionists);
@@ -144,7 +153,8 @@ async function main() {
   dayCycle.apply();
   hud.setClock(dayCycle.label);
   let dayTimer = 0;
-  if (!apiUrl) hud.setConnection('offline', 'No data source. Open with ?api=<url>&key=<key>.');
+  if (!apiUrl && demo) hud.setConnection('live', 'Demo agents only');
+  else if (!apiUrl) hud.setConnection('offline', 'No data source. Open with ?api=<url>&key=<key>.');
   else {
     hud.setConnection(connection.state, connection.detail);
     showConnection = (state, detail) => hud.setConnection(state, detail);
@@ -161,7 +171,7 @@ async function main() {
   loading.remove();
 
   // Debug handle for poking at the sim from the console.
-  Object.assign(window, { office: { layout, nav, director, store, source, stage, chars, transport, housekeeping, robot, dayCycle, THREE, get cinematics() { return cinematics; } } });
+  Object.assign(window, { office: { layout, nav, director, store, source, stage, chars, transport, housekeeping, robot, dayCycle, demo, THREE, get cinematics() { return cinematics; } } });
 
   const timer = new THREE.Timer();
   let simTime = 0;
@@ -171,6 +181,7 @@ async function main() {
     nav.update(dt);
     const zoom = stage.camera.zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
+    demo?.update(dt);
     office.update(dt);
     dayTimer -= dt;
     if (dayTimer <= 0) {

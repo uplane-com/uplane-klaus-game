@@ -82,7 +82,7 @@ export class Hud {
     const badge = this.root.querySelector<HTMLElement>('#conn-badge');
     const text = this.root.querySelector<HTMLElement>('#conn-detail');
     if (badge) {
-      badge.textContent = state === 'live' ? 'Live' : state === 'connecting' ? 'Connecting…' : 'Offline';
+      badge.textContent = (state === 'live' ? 'Live' : state === 'connecting' ? 'Connecting…' : 'Offline') + (new URLSearchParams(location.search).has('demo') ? ' + demo' : '');
       badge.dataset.state = state;
     }
     if (text) {
