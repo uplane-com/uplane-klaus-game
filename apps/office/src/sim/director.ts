@@ -42,6 +42,8 @@ export interface Actor {
   spawnedAt: number;
   /** Has reached a destination at least once (i.e. finished arriving at the office). */
   settled: boolean;
+  /** Came from the street: must walk in through the lobby (turnstiles) before anything else. */
+  mustEnter: boolean;
   thinkTimer: number;
   arrivedBy: TransportMode | null;
   /** Bike/scooter this agent parked at the rack. */
@@ -152,6 +154,8 @@ export class Director {
     }
     actor.arrivedBy = mode;
     actor.bikeSlot = bikeSlot;
+    // Everyone enters through the lobby, never through the side exits.
+    actor.mustEnter = true;
   }
 
   rideGone(id: string) {
@@ -207,6 +211,7 @@ export class Director {
       lastActivitySince: rec.activitySince,
       spawnedAt: this.time,
       settled: false,
+      mustEnter: false,
       thinkTimer: this.rng.float(0, 0.3),
       arrivedBy: null,
       bikeSlot: null,
@@ -286,6 +291,17 @@ export class Director {
     }
 
     if (rec.status === 'stopped') return this.departureGoal(a);
+
+    // Just arrived from the street: walk in through the lobby gates first (spread over the lanes),
+    // otherwise the shortest path for east/west desks would go through a side exit.
+    if (a.mustEnter) {
+      const lanes = this.layout.turnstiles?.lanes;
+      const gateZ = this.layout.turnstiles?.z ?? this.layout.entrance.inside.z;
+      const x = lanes?.length ? lanes[a.slot % lanes.length] : this.layout.entrance.inside.x;
+      const pos = v2(x, gateZ - 2.4);
+      if (Math.hypot(a.body.x - pos.x, a.body.z - pos.z) < 2.5 || a.body.z < gateZ - 1) a.mustEnter = false;
+      else return { kind: 'point', pos, key: 'lobby-in' };
+    }
 
     switch (act.kind) {
       case 'meeting': {
