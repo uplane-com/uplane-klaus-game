@@ -35,7 +35,9 @@ export class Stage {
 
     const aspect = container.clientWidth / container.clientHeight;
     const h = this.viewHeight / 2;
-    this.camera = new THREE.OrthographicCamera(-h * aspect, h * aspect, h, -h, 0.1, 1000);
+    // Negative near plane: an orthographic view doesn't change with depth, and it keeps tall
+    // city towers between the camera and the office from being sliced off at the top.
+    this.camera = new THREE.OrthographicCamera(-h * aspect, h * aspect, h, -h, -400, 1000);
     this.camera.position.copy(center).add(new THREE.Vector3(-55, 95, 95));
     this.camera.zoom = 1.1;
     this.camera.updateProjectionMatrix();

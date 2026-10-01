@@ -126,6 +126,10 @@ function mergeSkinnedParts(scene: THREE.Object3D) {
 
 export interface Pose {
   seated?: boolean;
+  /** Seated with a laptop on the lap (sofa/beanbag workstation). */
+  lap?: boolean;
+  /** On the phone: hand at the ear, the other hand talking. */
+  phone?: boolean;
   /** Hands on handlebars. */
   ride?: boolean;
   typing?: boolean;
@@ -139,6 +143,10 @@ export interface Pose {
   sweep?: { weight: number; swing: number };
   wipe?: { weight: number; swing: number };
 }
+
+/** Laptop position relative to a seated character's root (world units). */
+const LAP_HEIGHT = 0.42;
+const LAP_FORWARD = 0.42;
 
 const armEuler = new THREE.Euler(0, 0, 0, 'YZX');
 const tmpQuat = new THREE.Quaternion();
@@ -169,6 +177,17 @@ const headphonesGeo = (() => {
   const cupR = new THREE.BoxGeometry(0.06, 0.12, 0.12).translate(-0.245, 0.14, 0);
   return mergeGeometries([band.toNonIndexed(), cupL.toNonIndexed(), cupR.toNonIndexed()])!;
 })();
+/** Laptop resting on the lap: base + open lid, screen facing the character. */
+const laptopGeo = (() => {
+  const base = new THREE.BoxGeometry(0.54, 0.03, 0.36).translate(0, 0.015, 0);
+  const lid = new THREE.BoxGeometry(0.54, 0.34, 0.025).translate(0, 0.17, 0).rotateX(0.3).translate(0, 0.02, 0.18);
+  return mergeGeometries([base.toNonIndexed(), lid.toNonIndexed()])!;
+})();
+const laptopScreenGeo = new THREE.PlaneGeometry(0.48, 0.28).rotateY(Math.PI).translate(0, 0.17, -0.014).rotateX(0.3).translate(0, 0.02, 0.18);
+const laptopMat = new THREE.MeshStandardMaterial({ color: '#3a3f4b', roughness: 0.4, metalness: 0.3 });
+const screenOn = new THREE.MeshBasicMaterial({ color: '#9fd4ff', toneMapped: false });
+const screenOff = new THREE.MeshBasicMaterial({ color: '#2b3140' });
+
 const materialCache = new Map<string, THREE.MeshStandardMaterial>();
 function flatMat(color: string) {
   let m = materialCache.get(color);
@@ -234,6 +253,7 @@ export class Character {
   readonly walkFactor: number;
   private readonly phase: number;
   private opacity = 1;
+  private laptop: { group: THREE.Group; screen: THREE.Mesh } | null = null;
 
   constructor(
     id: string,
@@ -343,7 +363,14 @@ export class Character {
       setArm(this.bones.armL, 1, 1.35, 0.2);
       setArm(this.bones.armR, -1, 1.35, 0.2);
     }
-    if (pose.typing) {
+    this.showLaptop(!!pose.lap, !!pose.typing);
+    if (pose.lap) {
+      // Hands resting on the laptop keyboard, head tilted down to the screen.
+      const k = pose.typing ? 0.06 : 0;
+      setArm(this.bones.armL, 1, 1.2, 0.62 + Math.sin(tt * 16) * k);
+      setArm(this.bones.armR, -1, 1.2, 0.62 + Math.sin(tt * 16 + 1.7) * k);
+      this.bones.head.rotateX(0.22);
+    } else if (pose.typing) {
       setArm(this.bones.armL, 1, 1.3, 0.3 + Math.sin(tt * 16) * 0.08);
       setArm(this.bones.armR, -1, 1.3, 0.3 + Math.sin(tt * 16 + 1.7) * 0.08);
       this.bones.head.rotateX(0.12);
@@ -351,6 +378,12 @@ export class Character {
     if (pose.thinking) {
       setArm(this.bones.armR, -1, 1.25, -0.55);
       this.bones.head.rotateZ(Math.sin(tt * 1.3) * 0.12);
+    }
+    if (pose.phone) {
+      setArm(this.bones.armR, -1, 0.95, -0.8);
+      setArm(this.bones.armL, 1, 1.1 + Math.sin(tt * 2.3) * 0.25, 0.45 + Math.sin(tt * 3.1) * 0.15);
+      this.bones.head.rotateZ(-0.18);
+      this.bones.head.rotateY(Math.sin(tt * 0.9) * 0.2);
     }
     if (pose.handUp) {
       // Chibi arms cannot reach above the head, so wave beside it instead.
@@ -376,6 +409,22 @@ export class Character {
       this.bones.torso.rotateY(s * 0.08 * w);
       this.bones.head.rotateX(0.22 * w);
     }
+  }
+
+  private showLaptop(on: boolean, active: boolean) {
+    if (!on && !this.laptop) return;
+    if (!this.laptop) {
+      const group = new THREE.Group();
+      const body = new THREE.Mesh(laptopGeo, laptopMat);
+      body.castShadow = true;
+      const screen = new THREE.Mesh(laptopScreenGeo, screenOff);
+      group.add(body, screen);
+      group.position.set(0, LAP_HEIGHT, LAP_FORWARD);
+      this.root.add(group);
+      this.laptop = { group, screen };
+    }
+    this.laptop.group.visible = on;
+    this.laptop.screen.material = active ? screenOn : screenOff;
   }
 
   setOpacity(o: number) {

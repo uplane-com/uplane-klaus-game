@@ -15,6 +15,9 @@ import type { AgentRecord, AgentStore } from './store';
 import type { Ticket, TransportSystem } from './transport';
 import type { Turnstiles } from '../render/turnstiles';
 
+/** Desks and laptop seats (sofas/beanbags in work rooms) are both workstations. */
+const isWorkSeat = (s: Seat) => s.kind === 'desk' || s.kind === 'lap';
+
 /**
  * Maps agent state (from the store) to physical behaviour: which desk an
  * agent owns, when it walks to a tool room, a meeting, the coffee lounge,
@@ -61,6 +64,9 @@ export interface Actor {
 
 const TOOL_TRIP_DELAY = 1.2;
 const BREAK_DELAY = 2.5;
+/** Share of calls taken in a phone booth, and how far an agent walks for one. */
+const BOOTH_CHANCE = 0.6;
+const BOOTH_RANGE = 40;
 
 const SCREEN_COLORS: Record<string, string> = {
   working: '#4f9dff',
@@ -230,12 +236,12 @@ export class Director {
 
   private claimDesk(a: Actor) {
     const role = ROLES[a.rec.role];
-    const own = this.room(role.room).seats.filter((s) => s.kind === 'desk' && !s.occupant);
+    const own = this.room(role.room).seats.filter((s) => isWorkSeat(s) && !s.occupant);
     let seat = own.length ? this.rng.pick(own) : null;
     if (!seat) {
       // Overflow: any free desk in the same department, then anywhere.
-      const sameDept = this.workRooms.filter((r) => r.def.dept === role.dept).flatMap((r) => r.seats.filter((s) => s.kind === 'desk' && !s.occupant));
-      const anyDesk = this.workRooms.flatMap((r) => r.seats.filter((s) => s.kind === 'desk' && !s.occupant));
+      const sameDept = this.workRooms.filter((r) => r.def.dept === role.dept).flatMap((r) => r.seats.filter((s) => isWorkSeat(s) && !s.occupant));
+      const anyDesk = this.workRooms.flatMap((r) => r.seats.filter((s) => isWorkSeat(s) && !s.occupant));
       seat = sameDept[0] ?? anyDesk[0] ?? null;
     }
     if (seat) {
@@ -330,6 +336,17 @@ export class Director {
         if (pick) return 'kind' in pick ? { kind: 'seat', seat: pick } : { kind: 'spot', spot: pick };
         break;
       }
+      case 'messaging': {
+        // Some calls are taken in a phone booth, if a free one is close enough.
+        const inBooth = a.away?.roomId === 'booths';
+        if (inBooth) return { kind: 'seat', seat: a.away as Seat };
+        if (actAge < TOOL_TRIP_DELAY || a.breakRoll > BOOTH_CHANCE) break;
+        const here = v2(a.body.x, a.body.z);
+        const near = this.layout.booths.map((b) => b.seat).filter((s) => dist2(here, s.pos) < BOOTH_RANGE * BOOTH_RANGE);
+        const seat = this.reserve(a, near);
+        if (seat) return { kind: 'seat', seat };
+        break;
+      }
       case 'idle': {
         if (rec.task || actAge < BREAK_DELAY || a.breakRoll > 0.65) break;
         const lounge = this.room('lounge');
@@ -403,7 +420,7 @@ export class Director {
       if (a.riding) continue;
       if (a.rec.activitySince !== a.lastActivitySince) {
         a.lastActivitySince = a.rec.activitySince;
-        if (a.rec.activity.kind === 'idle') a.breakRoll = this.rng.float();
+        if (a.rec.activity.kind === 'idle' || a.rec.activity.kind === 'messaging') a.breakRoll = this.rng.float();
         a.thinkTimer = 0;
       }
       a.thinkTimer -= dt;
@@ -426,6 +443,7 @@ export class Director {
         thinking: !!atDesk && act === 'thinking',
         handUp: act === 'blocked',
         shake: act === 'error',
+        phone: act === 'messaging' && a.body.seated && a.away?.roomId === 'booths',
       });
 
       if (a.body.arrived) a.settled = true;

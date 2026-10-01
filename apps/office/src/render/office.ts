@@ -1,11 +1,13 @@
 import * as THREE from 'three';
+import { Pendants } from './pendants';
+import { CAMPUS, City } from './city';
 import { PLAZA } from '../config/office';
 import { BIKE_RACK, BUS_STOP_X, HELIPAD, ROAD } from '../config/transport';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { GLASS_WALL_HEIGHT, type FurnitureModel } from '../config/scale';
 import { drawLinearLogo } from './ticketWall';
-import type { Board, FloorPattern, OfficeLayout } from '../world/layout';
+import type { Board, FloorPattern, OfficeLayout, Rug, RugPattern } from '../world/layout';
 import type { ModelProto } from './assets';
 
 /**
@@ -25,6 +27,8 @@ export class OfficeView {
   private readonly outdoor: { mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial; base: THREE.Color }[] = [];
   /** Pools of lamplight on the pavement (only visible after dark). */
   private lampPools: THREE.MeshBasicMaterial | null = null;
+  private pendants: Pendants | null = null;
+  private city: City | null = null;
   /** Per room: the flat floor label, which extrudes into 3D letters up to wall height on hover. */
   private readonly signs = new Map<
     string,
@@ -44,6 +48,10 @@ export class OfficeView {
       for (const obj of this.group.children.slice(from)) obj.traverse((o) => (o.userData.outdoor ??= true));
     };
     outdoors(() => this.buildGround());
+    outdoors(() => {
+      this.city = new City();
+      this.group.add(this.city.group);
+    });
     this.buildFloors();
     this.buildWalls();
     this.buildFurniture(furniture);
@@ -56,6 +64,8 @@ export class OfficeView {
     this.buildLabels();
     outdoors(() => this.buildStreetProps());
     this.buildRugs();
+    this.pendants = new Pendants(this.layout.pendants, radialGlow());
+    this.group.add(this.pendants.group);
     this.buildProps();
     outdoors(() => this.buildLandscape());
     this.collectOutdoor();
@@ -86,6 +96,8 @@ export class OfficeView {
       tint.setRGB(1 - k * 0.74, 1 - k * 0.7, 1 - k * 0.55);
       mat.color.copy(base).multiply(tint);
     }
+    this.pendants?.setNight(k);
+    this.city?.setNight(k);
     if (this.lampPools) {
       this.lampPools.opacity = Math.max(0, (k - 0.25) / 0.75) * 0.75;
       this.lampPools.visible = this.lampPools.opacity > 0.01;
@@ -125,29 +137,30 @@ export class OfficeView {
   // -- builders -----------------------------------------------------------
 
   private buildGround() {
+    // Paved campus lot; the city around it brings its own streets.
     const grass = new THREE.Mesh(
-      new THREE.PlaneGeometry(600, 600),
-      new THREE.MeshStandardMaterial({ color: '#9dbf86', roughness: 1 }),
+      new THREE.PlaneGeometry(CAMPUS.x1 - CAMPUS.x0, CAMPUS.z1 - CAMPUS.z0),
+      new THREE.MeshStandardMaterial({ color: '#d2cec5', roughness: 1 }),
     );
     grass.rotation.x = -Math.PI / 2;
-    grass.position.set(48, -0.02, 32);
+    grass.position.set((CAMPUS.x0 + CAMPUS.x1) / 2, -0.02, (CAMPUS.z0 + CAMPUS.z1) / 2);
     grass.receiveShadow = true;
     this.group.add(grass);
 
     // Road beyond the plaza.
     const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(600, 10),
+      new THREE.PlaneGeometry(678, 10),
       new THREE.MeshStandardMaterial({ color: '#4a4d55', roughness: 1 }),
     );
     road.rotation.x = -Math.PI / 2;
-    road.position.set(48, -0.01, PLAZA.z1 + 5);
+    road.position.set(-81, -0.01, PLAZA.z1 + 5);
     road.receiveShadow = true;
     this.group.add(road);
     const dashGeo = new THREE.PlaneGeometry(2.5, 0.25);
     dashGeo.rotateX(-Math.PI / 2);
-    const dashes = new THREE.InstancedMesh(dashGeo, new THREE.MeshBasicMaterial({ color: '#e9e4d0' }), 120);
+    const dashes = new THREE.InstancedMesh(dashGeo, new THREE.MeshBasicMaterial({ color: '#e9e4d0' }), 100);
     const m = new THREE.Matrix4();
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 100; i++) {
       m.makeTranslation(-250 + i * 5, 0, PLAZA.z1 + 5);
       dashes.setMatrixAt(i, m);
     }
@@ -181,21 +194,27 @@ export class OfficeView {
   }
 
   private buildRugs() {
-    const rugs = this.layout.rugs;
-    if (!rugs.length) return;
+    const byPattern = new Map<RugPattern, Rug[]>();
+    for (const r of this.layout.rugs) {
+      const k = r.pattern ?? 'plain';
+      byPattern.set(k, [...(byPattern.get(k) ?? []), r]);
+    }
     const geo = new THREE.PlaneGeometry(1, 1);
     geo.rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardMaterial({ map: rugTexture(), roughness: 1, alphaTest: 0.5 });
-    const inst = new THREE.InstancedMesh(geo, mat, rugs.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
-    rugs.forEach((r, i) => {
-      m.compose(new THREE.Vector3(r.x, 0.02, r.z), q, new THREE.Vector3(r.w, 1, r.d));
-      inst.setMatrixAt(i, m);
-      inst.setColorAt(i, this.tmpColor.set(r.color));
-    });
-    inst.receiveShadow = true;
-    this.group.add(inst);
+    for (const [pattern, rugs] of byPattern) {
+      const mat = new THREE.MeshStandardMaterial({ map: rugTexture(pattern), roughness: 1, alphaTest: 0.5 });
+      const inst = new THREE.InstancedMesh(geo, mat, rugs.length);
+      rugs.forEach((r, i) => {
+        // Runners sit a hair lower so room rugs never z-fight with them.
+        m.compose(new THREE.Vector3(r.x, pattern === 'runner' ? 0.015 : 0.02, r.z), q, new THREE.Vector3(r.w, 1, r.d));
+        inst.setMatrixAt(i, m);
+        inst.setColorAt(i, this.tmpColor.set(r.color));
+      });
+      inst.receiveShadow = true;
+      this.group.add(inst);
+    }
   }
 
   private buildWalls() {
@@ -223,7 +242,7 @@ export class OfficeView {
     // Interior glass partitions: low solid base, glass pane, slim frame + mullions.
     const baseH = 0.3;
     const plinth = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: '#e4e0d8', roughness: 0.8 }), Math.max(1, inner.length));
-    const rail = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: '#b7bfcc', roughness: 0.4, metalness: 0.5 }), Math.max(1, inner.length));
+    const rail = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: '#23262d', roughness: 0.45, metalness: 0.4 }), Math.max(1, inner.length));
     const glass = new THREE.InstancedMesh(
       box,
       new THREE.MeshStandardMaterial({ color: '#d7e8ff', transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.2, depthWrite: false }),
@@ -1129,7 +1148,7 @@ function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2
   return tex;
 }
 
-const FLOOR_TILE: Record<FloorPattern, number> = { wood: 4, darkwood: 4, concrete: 12, terrazzo: 6, tiles: 3, pavers: 4 };
+const FLOOR_TILE: Record<FloorPattern, number> = { wood: 6, darkwood: 4, concrete: 12, terrazzo: 6, tiles: 3, pavers: 4 };
 
 /** Procedural floor textures so rooms read as wood, concrete, terrazzo, ... */
 function floorTexture(pattern: FloorPattern): THREE.Texture {
@@ -1138,9 +1157,31 @@ function floorTexture(pattern: FloorPattern): THREE.Texture {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const tex = canvasTexture(size, size, (ctx) => {
     switch (pattern) {
-      case 'wood':
+      case 'wood': {
+        // Basket-weave parquet: 8x8 cells of three planks, alternating direction.
+        const tones = ['#d9b48c', '#d1aa80', '#dfbd97', '#caa177', '#d6b089'];
+        const cell = size / 8;
+        const pw = cell / 3;
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            const horizontal = (i + j) % 2 === 0;
+            for (let k = 0; k < 3; k++) {
+              ctx.fillStyle = tones[Math.floor(rnd() * tones.length)];
+              const x = i * cell + (horizontal ? 0 : k * pw);
+              const y = j * cell + (horizontal ? k * pw : 0);
+              const w = horizontal ? cell : pw;
+              const h = horizontal ? pw : cell;
+              ctx.fillRect(x, y, w, h);
+              ctx.strokeStyle = 'rgba(90,60,30,0.28)';
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(x + 0.75, y + 0.75, w - 1.5, h - 1.5);
+            }
+          }
+        }
+        break;
+      }
       case 'darkwood': {
-        const tones = pattern === 'wood' ? ['#d9b48c', '#d1aa80', '#dfbd97', '#caa177', '#d6b089'] : ['#8a6446', '#7d5a3f', '#946d4d', '#735237'];
+        const tones = ['#8a6446', '#7d5a3f', '#946d4d', '#735237'];
         const rows = 8;
         const h = size / rows;
         for (let r = 0; r < rows; r++) {
@@ -1244,18 +1285,74 @@ function floorTexture(pattern: FloorPattern): THREE.Texture {
   return tex;
 }
 
-function rugTexture(): THREE.Texture {
+/** Rug textures are drawn in white/greys and tinted per instance (runners carry their own colours). */
+function rugTexture(pattern: RugPattern): THREE.Texture {
+  if (pattern === 'runner') {
+    const tex = canvasTexture(64, 256, (ctx) => {
+      ctx.fillStyle = '#1f2a4d';
+      ctx.fillRect(0, 0, 64, 256);
+      ctx.fillStyle = '#c9a45c';
+      for (const y of [14, 236]) ctx.fillRect(0, y, 64, 6);
+      ctx.fillStyle = 'rgba(201,164,92,0.55)';
+      for (const y of [28, 226]) ctx.fillRect(0, y, 64, 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      for (let x = 0; x < 64; x += 8) ctx.fillRect(x, 34, 4, 188);
+    });
+    return tex;
+  }
   return canvasTexture(256, 256, (ctx) => {
     const r = 36;
     ctx.fillStyle = '#ffffff';
+    if (pattern === 'round') {
+      ctx.beginPath();
+      ctx.arc(128, 128, 124, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+      ctx.lineWidth = 8;
+      for (const rr of [108, 70, 34]) {
+        ctx.beginPath();
+        ctx.arc(128, 128, rr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      return;
+    }
     ctx.beginPath();
-    ctx.roundRect(4, 4, 248, 248, r);
+    ctx.roundRect(4, 4, 248, 248, pattern === 'plain' ? r : 10);
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
     ctx.lineWidth = 10;
     ctx.beginPath();
-    ctx.roundRect(22, 22, 212, 212, r - 14);
+    ctx.roundRect(22, 22, 212, 212, pattern === 'plain' ? r - 14 : 4);
     ctx.stroke();
+    if (pattern === 'border') {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.strokeRect(38, 38, 180, 180);
+    } else if (pattern === 'kilim') {
+      // Rows of diamonds with a fringe.
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
+      for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 4; x++) {
+          const cx = 64 + x * 43;
+          const cy = 78 + y * 50;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - 18);
+          ctx.lineTo(cx + 14, cy);
+          ctx.lineTo(cx, cy + 18);
+          ctx.lineTo(cx - 14, cy);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      for (let x = 12; x < 244; x += 8) {
+        ctx.fillRect(x, 0, 3, 6);
+        ctx.fillRect(x, 250, 3, 6);
+      }
+    } else if (pattern === 'stripes') {
+      ctx.fillStyle = 'rgba(0,0,0,0.1)';
+      for (let x = 40; x < 216; x += 28) ctx.fillRect(x, 32, 12, 192);
+    }
   });
 }
 

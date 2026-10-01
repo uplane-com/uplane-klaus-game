@@ -12,6 +12,7 @@ import { DayCycle } from './render/dayCycle';
 import { DebugOverlay } from './ui/debug';
 import { Guards } from './render/guards';
 import { SeatedStaff } from './render/seatedStaff';
+import { Booths } from './render/booths';
 import { Housekeeping } from './sim/housekeeping';
 import { RobotVisitor } from './sim/robotVisitor';
 import { SlidingDoors } from './render/slidingDoors';
@@ -62,6 +63,8 @@ async function main() {
   const debug = urlParams.has('debug') ? new DebugOverlay(stage.renderer, quality, () => director.actors.size) : null;
   const office = new OfficeView(layout, furniture);
   stage.scene.add(office.group);
+  const booths = new Booths(layout.booths);
+  office.group.add(booths.group);
   stage.staticCasters = office.group;
 
   const alarms = new AlarmSystem(layout.alarms, stage.sun, stage.hemi);
@@ -203,6 +206,7 @@ async function main() {
       ticketTimer = 60;
     }
     office.update(dt);
+    booths.update();
     dayTimer -= dt;
     if (dayTimer <= 0) {
       dayTimer = 15;

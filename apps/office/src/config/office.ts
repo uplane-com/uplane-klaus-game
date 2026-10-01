@@ -16,6 +16,13 @@ export interface DoorDef {
   width?: number;
 }
 
+/**
+ * Work rooms are split into four cells (NW, NE, SW, SE) around a central aisle;
+ * each cell gets its own furniture setup so no two rooms look the same.
+ * Sofa, nook and beanbag cells are laptop-on-lap workstations.
+ */
+export type WorkCell = 'pod' | 'pod2' | 'nook' | 'beanbags' | 'bench' | 'cafe' | 'rows' | 'sofaPair' | 'booths';
+
 export interface RoomDef {
   id: string;
   name: string;
@@ -27,6 +34,10 @@ export interface RoomDef {
   d: number;
   doors: DoorDef[];
   floor: string;
+  /** Work rooms: cell setups [NW, NE, SW, SE]. */
+  cells?: [WorkCell, WorkCell, WorkCell, WorkCell];
+  /** Floor finish override (work rooms default to wood). */
+  pattern?: 'wood' | 'darkwood' | 'concrete' | 'terrazzo';
 }
 
 export const BUILDING = { x0: -32, z0: 0, x1: 102, z1: 64 };
@@ -40,21 +51,21 @@ const R3 = 48;
 
 export const ROOMS: RoomDef[] = [
   // Row 1 — Ad Studio + shared
-  { id: 'creative', name: 'Creative', kind: 'work', dept: 'ad', x: 0, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f4e2cf' },
-  { id: 'content', name: 'Content', kind: 'work', dept: 'ad', x: 22, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f6e8d6' },
-  { id: 'adqa', name: 'Ad QA', kind: 'work', dept: 'ad', x: 44, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f4dcd0' },
+  { id: 'creative', name: 'Creative', kind: 'work', dept: 'ad', x: 0, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f4e2cf', cells: ['pod', 'nook', 'beanbags', 'pod'] },
+  { id: 'content', name: 'Content', kind: 'work', dept: 'ad', x: 22, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f6e8d6', cells: ['bench', 'pod', 'nook', 'bench'], pattern: 'terrazzo' },
+  { id: 'adqa', name: 'Ad QA', kind: 'work', dept: 'ad', x: 44, z: R1, w: 22, d: 18, doors: [{ side: 's' }], floor: '#f4dcd0', cells: ['pod', 'pod', 'cafe', 'beanbags'] },
   { id: 'meeting-a', name: 'Meeting A', kind: 'meeting', x: 66, z: R1, w: 14, d: 18, doors: [{ side: 's' }], floor: '#e7e0f1' },
   { id: 'library', name: 'Library', kind: 'library', x: 80, z: R1, w: 16, d: 18, doors: [{ side: 's' }], floor: '#eadcc4' },
 
   // Row 2 — Engineering + server room
-  { id: 'codegen', name: 'Code Gen', kind: 'work', dept: 'eng', x: 0, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dbe6f4' },
-  { id: 'codereview', name: 'Code Review', kind: 'work', dept: 'eng', x: 22, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dfe8f1' },
-  { id: 'testing', name: 'Testing', kind: 'work', dept: 'eng', x: 44, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#d9e3ee' },
-  { id: 'prreview', name: 'PR Review', kind: 'work', dept: 'eng', x: 66, z: R2, w: 14, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dde3f3' },
+  { id: 'codegen', name: 'Code Gen', kind: 'work', dept: 'eng', x: 0, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dbe6f4', cells: ['pod', 'nook', 'pod', 'beanbags'], pattern: 'darkwood' },
+  { id: 'codereview', name: 'Code Review', kind: 'work', dept: 'eng', x: 22, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dfe8f1', cells: ['rows', 'rows', 'nook', 'cafe'] },
+  { id: 'testing', name: 'Testing', kind: 'work', dept: 'eng', x: 44, z: R2, w: 22, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#d9e3ee', cells: ['pod', 'bench', 'beanbags', 'pod'], pattern: 'concrete' },
+  { id: 'prreview', name: 'PR Review', kind: 'work', dept: 'eng', x: 66, z: R2, w: 14, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#dde3f3', cells: ['pod2', 'sofaPair', 'sofaPair', 'pod2'] },
   { id: 'server', name: 'Server Room', kind: 'server', x: 80, z: R2, w: 16, d: 18, doors: [{ side: 'n' }, { side: 's' }], floor: '#3b4252' },
 
   // Row 3 — Comms, lobby, lounge, big meeting room
-  { id: 'comms', name: 'Comms', kind: 'work', dept: 'comms', x: 0, z: R3, w: 22, d: 16, doors: [{ side: 'n' }], floor: '#dcefe3' },
+  { id: 'comms', name: 'Comms', kind: 'work', dept: 'comms', x: 0, z: R3, w: 22, d: 16, doors: [{ side: 'n' }], floor: '#dcefe3', cells: ['cafe', 'nook', 'bench', 'booths'], pattern: 'terrazzo' },
   { id: 'lobby', name: 'Lobby', kind: 'lobby', x: 22, z: R3, w: 22, d: 16, doors: [{ side: 'n', t: 0.3, width: 4 }, { side: 'n', t: 0.72, width: 4 }], floor: '#ebe7df' },
   { id: 'lounge', name: 'Coffee Lounge', kind: 'lounge', x: 44, z: R3, w: 30, d: 16, doors: [{ side: 'n', t: 0.3 }, { side: 'n', t: 0.72 }], floor: '#f0e5cc' },
   { id: 'linear', name: 'Linear', kind: 'linear', x: 74, z: R3, w: 10, d: 16, doors: [{ side: 'n', t: 0.2, width: 3 }], floor: '#ecebfa' },

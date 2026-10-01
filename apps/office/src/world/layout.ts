@@ -1,4 +1,4 @@
-import { BUILDING, ENTRANCE, HALLWAY_FLOOR, PLAZA, ROOMS, type RoomDef, type Side } from '../config/office';
+import { BUILDING, ENTRANCE, HALLWAY_FLOOR, PLAZA, ROOMS, type RoomDef, type Side, type WorkCell } from '../config/office';
 import {
   AGENT_RADIUS,
   FURN,
@@ -35,11 +35,32 @@ export interface Wall extends Box {
 
 export type FloorPattern = 'wood' | 'darkwood' | 'concrete' | 'terrazzo' | 'tiles' | 'pavers';
 
+export type RugPattern = 'plain' | 'border' | 'kilim' | 'stripes' | 'round' | 'runner';
+
 export interface Rug {
   x: number;
   z: number;
   w: number;
   d: number;
+  color: string;
+  pattern?: RugPattern;
+}
+
+/** Acoustic phone booth; agents take calls inside. `yaw` is the direction the glass front faces. */
+export interface Booth {
+  x: number;
+  z: number;
+  yaw: number;
+  color: string;
+  seat: Seat;
+}
+
+/** Pendant lamp hanging above furniture; `y` is the bottom of the shade. */
+export interface Pendant {
+  x: number;
+  z: number;
+  y: number;
+  kind: 'dome' | 'globe' | 'cone';
   color: string;
 }
 
@@ -60,7 +81,8 @@ export interface Placement {
   y?: number;
 }
 
-export type SeatKind = 'desk' | 'meeting' | 'sofa' | 'chair';
+/** `lap`: a workstation on a sofa/beanbag, the agent works with a laptop on their lap. */
+export type SeatKind = 'desk' | 'meeting' | 'sofa' | 'chair' | 'lap';
 
 export interface Seat {
   id: string;
@@ -74,6 +96,8 @@ export interface Seat {
   occupant: string | null;
   /** Index into layout.monitors for desk seats. */
   monitor?: number;
+  /** Seat height override (e.g. low beanbags). */
+  y?: number;
 }
 
 export interface Spot {
@@ -175,6 +199,8 @@ export interface OfficeLayout {
   rooms: Map<string, RoomLayout>;
   walls: Wall[];
   rugs: Rug[];
+  pendants: Pendant[];
+  booths: Booth[];
   props: Prop[];
   obstacles: Box[];
   placements: Placement[];
@@ -219,8 +245,6 @@ const SEAT_GAP = 0.5;
 /** Chair zone behind the desk that belongs to the pod obstacle. */
 const CHAIR_ZONE = 0.95;
 const POD_D = DESK_D * 2 + CHAIR_ZONE * 2;
-const AISLE = 3.2;
-const ROOM_MARGIN = 1.6;
 /** How far past an obstacle edge a walkable approach point sits. */
 const APPROACH_PAD = AGENT_RADIUS + 0.3;
 
@@ -272,7 +296,7 @@ class RoomBuilder {
     this.out.obstacles.push({ x, z, w, d, h });
   }
 
-  seat(kind: SeatKind, pos: Vec2, yaw: number, approach: Vec2, monitor?: number): Seat {
+  seat(kind: SeatKind, pos: Vec2, yaw: number, approach: Vec2, monitor?: number, y?: number): Seat {
     const s: Seat = {
       id: `${this.def.id}:seat${this.seatCounter++}`,
       roomId: this.def.id,
@@ -282,6 +306,7 @@ class RoomBuilder {
       approach,
       occupant: null,
       monitor,
+      y,
     };
     this.seats.push(s);
     return s;
@@ -298,6 +323,22 @@ class RoomBuilder {
     };
     this.spots.push(s);
     return s;
+  }
+
+  /** Pendant style for this room: playful cones for the ad team, black/brass domes for eng & meetings, opal globes elsewhere. */
+  pendantStyle(): Pick<Pendant, 'kind' | 'color'> {
+    if (this.def.dept === 'ad') return { kind: 'cone', color: this.rng.pick(['#ff7a59', '#ffb020', '#f15bb5', '#1a44ff']) };
+    if (this.def.dept === 'eng' || this.def.kind === 'meeting') return { kind: 'dome', color: '#1f2229' };
+    if (this.def.dept === 'comms') return { kind: 'dome', color: '#2f6b55' };
+    return { kind: 'globe', color: '#f6efe2' };
+  }
+
+  /** A row of `count` pendants centred on (x, z), spaced along x or z. */
+  pendants(x: number, z: number, count: number, spacing: number, along: 'x' | 'z' = 'x', style: Pick<Pendant, 'kind' | 'color'> = this.pendantStyle(), y = 2.55) {
+    for (let i = 0; i < count; i++) {
+      const t = (i - (count - 1) / 2) * spacing;
+      this.out.pendants.push({ x: along === 'x' ? x + t : x, z: along === 'z' ? z + t : z, y, ...style });
+    }
   }
 
   hasDoor(side: Side) {
@@ -356,48 +397,214 @@ class RoomBuilder {
 // ---------------------------------------------------------------------------
 // Room generators
 
+/** Clear walkway through the middle of every work room (doors are centred). */
+const WORK_AISLE = 3.8;
+/** Gap between the north and south cells. */
+const WORK_MID_GAP = 1.6;
+const CELL_MARGIN = 0.4;
+
+interface Cell {
+  cx: number;
+  cz: number;
+  w: number;
+  d: number;
+  /** Direction pointing away from the aisle (towards the side wall): -1 west, 1 east. */
+  outward: -1 | 1;
+}
+
 function buildWorkRoom(rb: RoomBuilder) {
-  const ix0 = rb.x0 + ROOM_MARGIN;
-  const ix1 = rb.x1 - ROOM_MARGIN;
-  const iz0 = rb.z0 + ROOM_MARGIN + 0.6;
-  const iz1 = rb.z1 - ROOM_MARGIN - 0.6;
-  const W = ix1 - ix0;
-  const D = iz1 - iz0;
-
-  let best = { n: 2, cols: 0, rows: 0, seats: 0 };
-  for (let n = 5; n >= 2; n--) {
-    const podW = n * DESK_W;
-    const cols = Math.floor((W + AISLE) / (podW + AISLE));
-    const rows = Math.floor((D + AISLE) / (POD_D + AISLE));
-    const seats = cols * rows * n * 2;
-    if (seats > best.seats) best = { n, cols, rows, seats };
-  }
-  const { n, cols, rows } = best;
-  const podW = n * DESK_W;
-  const gridW = cols * podW + (cols - 1) * AISLE;
-  const gridD = rows * POD_D + (rows - 1) * AISLE;
-  const gx0 = (ix0 + ix1) / 2 - gridW / 2;
-  const gz0 = (iz0 + iz1) / 2 - gridD / 2;
-
-  for (let c = 0; c < cols; c++) {
-    for (let r = 0; r < rows; r++) {
-      const cx = gx0 + c * (podW + AISLE) + podW / 2;
-      const cz = gz0 + r * (POD_D + AISLE) + POD_D / 2;
-      buildDeskPod(rb, cx, cz, n);
-    }
-  }
+  const wall = WALL_THICKNESS / 2;
+  const cx = (rb.x0 + rb.x1) / 2;
+  const halfW = (rb.def.w - WALL_THICKNESS - WORK_AISLE) / 2;
+  const halfD = (rb.def.d - WALL_THICKNESS - WORK_MID_GAP) / 2;
+  const w = halfW - CELL_MARGIN * 2;
+  const d = halfD - CELL_MARGIN * 2;
+  const xs = [rb.x0 + wall + halfW / 2, rb.x1 - wall - halfW / 2];
+  const zs = [rb.z0 + wall + halfD / 2, rb.z1 - wall - halfD / 2];
+  const cells = rb.def.cells ?? ['pod', 'pod', 'pod', 'pod'];
+  cells.forEach((kind, i) => {
+    const x = xs[i % 2];
+    buildCell(rb, kind, { cx: x, cz: zs[Math.floor(i / 2)], w, d, outward: x < cx ? -1 : 1 });
+  });
 
   rb.cornerPlants();
   rb.doorPlants();
   const back = rb.backSide();
   const kind = rb.def.id === 'creative' ? 'moodboard' : rb.def.dept === 'eng' ? 'kanban' : 'whiteboard';
   addBoard(rb, back, 0.5, 4.2, kind);
-  // A bookcase on each side wall for some texture.
-  for (const side of ['w', 'e'] as const) {
-    if (rb.hasDoor(side)) continue;
-    const p = rb.againstWall(side, 0.5, FURN.bookcaseOpen.d / 2 + 0.05);
-    rb.placeSolid('bookcaseOpen', p.x, p.z, FACE[side === 'w' ? 'e' : 'w']);
+}
+
+function buildCell(rb: RoomBuilder, kind: WorkCell, c: Cell) {
+  switch (kind) {
+    case 'pod':
+      return buildDeskPod(rb, c.cx, c.cz, Math.min(4, Math.floor(c.w / DESK_W)));
+    case 'pod2':
+      return buildDeskPod(rb, c.cx, c.cz, 2);
+    case 'rows':
+      // Classroom rows facing the board on the north wall.
+      for (const dz of [-1.9, 1.7]) buildDeskPod(rb, c.cx, c.cz + dz - 0.5, Math.min(4, Math.floor(c.w / DESK_W)), false, [1]);
+      return;
+    case 'nook':
+      return buildNook(rb, c);
+    case 'sofaPair':
+      return buildSofaPair(rb, c);
+    case 'beanbags':
+      return buildBeanbags(rb, c);
+    case 'bench':
+      return buildBench(rb, c);
+    case 'cafe':
+      return buildCafe(rb, c);
+    case 'booths':
+      return buildBoothCell(rb, c);
   }
+}
+
+export const BOOTH = { w: 1.6, d: 1.5, h: 2.2 };
+const BOOTH_COLORS = ['#2f6b55', '#d9734e', '#3d5a80', '#e0b25a'];
+
+/** A phone booth with its glass front facing `yaw`; the caller sits on a bench at the back, facing out. */
+function addBooth(out: OfficeLayout, x: number, z: number, yaw: number, color: string) {
+  const sideways = Math.abs(Math.sin(yaw)) > 0.5;
+  out.obstacles.push({ x, z, w: sideways ? BOOTH.d : BOOTH.w, d: sideways ? BOOTH.w : BOOTH.d, h: OBSTACLE_NAV_HEIGHT });
+  const f = fwdOf(yaw);
+  const back = -BOOTH.d / 2 + 0.4;
+  const front = BOOTH.d / 2 + APPROACH_PAD;
+  const seat: Seat = {
+    id: `booth:${out.booths.length}`,
+    roomId: 'booths',
+    kind: 'chair',
+    pos: v2(x + f.x * back, z + f.z * back),
+    yaw,
+    approach: v2(x + f.x * front, z + f.z * front),
+    occupant: null,
+  };
+  out.booths.push({ x, z, yaw, color, seat });
+}
+
+/** Two phone booths against the wall-side of the cell, fronts facing the aisle, plus a couple of beanbags. */
+function buildBoothCell(rb: RoomBuilder, c: Cell) {
+  const yaw = c.outward === 1 ? FACE.w : FACE.e;
+  const bx = c.cx + c.outward * (c.w / 2 - BOOTH.d / 2);
+  for (const dz of [-1, 1]) addBooth(rb.out, bx, c.cz + dz * (BOOTH.w / 2 + 0.2), yaw, BOOTH_COLORS[(rb.out.booths.length + 1) % BOOTH_COLORS.length]);
+  const lx = c.cx - c.outward * 1.6;
+  lapBeanbag(rb, lx - 0.9, c.cz - 0.9, FACE.s, rb.rng.pick(BEANBAG_COLORS));
+  lapBeanbag(rb, lx + 0.9, c.cz - 0.5, FACE.s, rb.rng.pick(BEANBAG_COLORS));
+  rb.placeSolid('pottedPlant', lx, c.cz + c.d / 2 - 0.5, rb.rng.float(0, 6));
+}
+
+/** Unit vector an agent/furniture with yaw `yaw` faces, and its right-hand side. */
+const fwdOf = (yaw: number) => v2(Math.sin(yaw), Math.cos(yaw));
+const sideOf = (yaw: number) => v2(Math.cos(yaw), -Math.sin(yaw));
+
+/** A sofa whose seats are laptop workstations. `offsets` are seat positions along the sofa. */
+function lapSofa(rb: RoomBuilder, model: 'loungeSofa' | 'loungeDesignSofa' | 'loungeChair', x: number, z: number, yaw: number, offsets: number[]) {
+  rb.placeSolid(model, x, z, yaw);
+  const f = fwdOf(yaw);
+  const sd = sideOf(yaw);
+  const front = FURN[model].d / 2 + APPROACH_PAD;
+  for (const o of offsets) {
+    const px = x + sd.x * o;
+    const pz = z + sd.z * o;
+    rb.seat('lap', v2(px + f.x * 0.15, pz + f.z * 0.15), yaw, v2(px + f.x * front, pz + f.z * front));
+  }
+}
+
+function lapBeanbag(rb: RoomBuilder, x: number, z: number, yaw: number, color: string) {
+  rb.out.props.push({ kind: 'beanbag', x, z, rot: yaw, color });
+  rb.obstacle(x, z, 1.1, 1.1);
+  const f = fwdOf(yaw);
+  const front = 0.55 + APPROACH_PAD;
+  rb.seat('lap', v2(x - f.x * 0.05, z - f.z * 0.05), yaw, v2(x + f.x * front, z + f.z * front), undefined, 0.24);
+}
+
+/** Two design sofas around a coffee table plus an armchair on the wall side; open towards the aisle. */
+function buildNook(rb: RoomBuilder, c: Cell) {
+  rb.out.rugs.push({ x: c.cx, z: c.cz, w: Math.min(c.w, 7.4), d: 6.2, color: rb.rng.pick(NOOK_RUGS), pattern: 'kilim' });
+  rb.pendants(c.cx, c.cz, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, 2.4);
+  rb.placeSolid('tableCoffee', c.cx, c.cz, 0);
+  const off = FURN.tableCoffee.d / 2 + 1.6 + FURN.loungeDesignSofa.d / 2;
+  lapSofa(rb, 'loungeDesignSofa', c.cx, c.cz - off, FACE.s, [-0.75, 0.75]);
+  lapSofa(rb, 'loungeDesignSofa', c.cx, c.cz + off, FACE.n, [-0.75, 0.75]);
+  const ax = c.cx + c.outward * (FURN.tableCoffee.w / 2 + 1.6 + FURN.loungeChair.d / 2);
+  lapSofa(rb, 'loungeChair', ax, c.cz, c.outward === 1 ? FACE.w : FACE.e, [0]);
+  rb.place('lampRoundFloor', ax, c.cz - off, 0);
+  rb.place('books', c.cx + 0.3, c.cz, 0.5, FURN.tableCoffee.h);
+}
+
+/** Two sofas facing each other across a coffee table (narrow rooms). */
+function buildSofaPair(rb: RoomBuilder, c: Cell) {
+  rb.out.rugs.push({ x: c.cx, z: c.cz, w: Math.min(c.w, 4.2), d: 6, color: rb.rng.pick(NOOK_RUGS), pattern: 'kilim' });
+  rb.pendants(c.cx, c.cz, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, 2.4);
+  rb.placeSolid('tableCoffee', c.cx, c.cz, 0);
+  const off = FURN.tableCoffee.d / 2 + 1.6 + FURN.loungeSofa.d / 2;
+  lapSofa(rb, 'loungeSofa', c.cx, c.cz - off, FACE.s, [-0.6, 0.6]);
+  lapSofa(rb, 'loungeSofa', c.cx, c.cz + off, FACE.n, [-0.6, 0.6]);
+}
+
+const BEANBAG_COLORS = ['#ff5c5c', '#ffb020', '#1a44ff', '#3ecf8e', '#9b5de5', '#f15bb5', '#00bbf9'];
+const NOOK_RUGS = ['#e9d8c4', '#d8e2dc', '#f2d0c4', '#d7d3ee', '#cfe6ef'];
+
+/** A circle of beanbags facing each other, laptops on laps. */
+function buildBeanbags(rb: RoomBuilder, c: Cell) {
+  const r = Math.min(2.4, c.d / 2 - 1.1);
+  rb.out.rugs.push({ x: c.cx, z: c.cz, w: r * 2 + 1.6, d: r * 2 + 1.6, color: rb.rng.pick(['#fff1b8', '#ffe0ec', '#dff5e8', '#e3dcff']), pattern: 'round' });
+  const n = 5;
+  const start = rb.rng.float(0, Math.PI * 2);
+  for (let k = 0; k < n; k++) {
+    const a = start + (k / n) * Math.PI * 2;
+    const x = c.cx + Math.sin(a) * r;
+    const z = c.cz + Math.cos(a) * r;
+    lapBeanbag(rb, x, z, a + Math.PI, BEANBAG_COLORS[(k + rb.rng.int(0, 6)) % BEANBAG_COLORS.length]);
+  }
+  rb.placeSolid('pottedPlant', c.cx + c.outward * (c.w / 2 - 0.3), c.cz - c.d / 2 + 0.4, rb.rng.float(0, 6));
+}
+
+/** Long shared table with laptops, chairs on both sides. */
+function buildBench(rb: RoomBuilder, c: Cell) {
+  const L = c.w - 1.2;
+  const tw = 1.3;
+  const h = 0.9;
+  rb.out.tables.push({ x: c.cx, z: c.cz, w: L, d: tw, h });
+  rb.pendants(c.cx, c.cz, 3, L / 3);
+  const chairOut = 0.75;
+  rb.obstacle(c.cx, c.cz, L, tw + chairOut * 2 + 0.5);
+  const per = Math.max(2, Math.floor(L / 2.1));
+  for (let i = 0; i < per; i++) {
+    const x = c.cx - L / 2 + (L / per) * (i + 0.5);
+    for (const row of [-1, 1] as const) {
+      const yaw = row === -1 ? FACE.s : FACE.n;
+      const pz = c.cz + row * (tw / 2 + chairOut);
+      rb.place('chairDesk', x, pz, yaw);
+      rb.place('laptop', x, c.cz + row * 0.28, yaw, h);
+      rb.seat('desk', v2(x, pz), yaw, v2(x, c.cz + row * (tw / 2 + chairOut + 0.25 + APPROACH_PAD)));
+    }
+  }
+  if (rb.rng.chance(0.7)) rb.place(rb.rng.pick(['plantSmall1', 'plantSmall2', 'plantSmall3'] as const), c.cx, c.cz, 0, h);
+}
+
+/** Two round café tables with three chairs each, opening away from each other. */
+function buildCafe(rb: RoomBuilder, c: Cell) {
+  const h = 0.9;
+  const rChair = 1.15;
+  for (const side of [-1, 1] as const) {
+    const tx = c.cx + side * Math.min(1.9, c.w / 2 - 2.3);
+    const tz = c.cz;
+    rb.out.tables.push({ x: tx, z: tz, w: 1.3, d: 1.3, h, round: true });
+    rb.obstacle(tx, tz, 1.3 + 1.8, 1.3 + 1.8);
+    rb.pendants(tx, tz, 1, 0);
+    // Chair directions from the table centre: north, outward, south.
+    for (const a of [Math.PI, side * HALF_PI, 0]) {
+      const dir = v2(Math.sin(a), Math.cos(a));
+      const yaw = a + Math.PI;
+      const px = tx + dir.x * rChair;
+      const pz = tz + dir.z * rChair;
+      rb.place('chairDesk', px, pz, yaw);
+      rb.place('laptop', tx + dir.x * 0.32, tz + dir.z * 0.32, yaw, h);
+      const reach = 1.55 + APPROACH_PAD;
+      rb.seat('desk', v2(px, pz), yaw, v2(tx + dir.x * reach, tz + dir.z * reach));
+    }
+  }
+  rb.out.rugs.push({ x: c.cx, z: c.cz, w: c.w, d: Math.min(c.d, 5.4), color: '#efe6d8', pattern: 'stripes' });
 }
 
 const RUG_COLORS: Record<string, string[]> = {
@@ -407,13 +614,18 @@ const RUG_COLORS: Record<string, string[]> = {
   none: ['#e8e2d6'],
 };
 
-function buildDeskPod(rb: RoomBuilder, cx: number, cz: number, n: number, commandCenter = false) {
+function buildDeskPod(rb: RoomBuilder, cx: number, cz: number, n: number, commandCenter = false, rows: readonly (-1 | 1)[] = [-1, 1]) {
   const out = rb.out;
   const podW = n * DESK_W;
-  rb.obstacle(cx, cz, podW, POD_D);
-  out.rugs.push({ x: cx, z: cz, w: podW + 1.6, d: POD_D + 1.4, color: rb.rng.pick(RUG_COLORS[rb.def.dept ?? 'none']) });
+  // Single-sided rows only cover their own half of the pod.
+  const half = POD_D / 2;
+  const pz0 = rows.includes(-1) ? cz - half : cz;
+  const pz1 = rows.includes(1) ? cz + half : cz;
+  rb.obstacle(cx, (pz0 + pz1) / 2, podW, pz1 - pz0);
+  out.rugs.push({ x: cx, z: (pz0 + pz1) / 2, w: podW + 1.6, d: pz1 - pz0 + 1.4, color: rb.rng.pick(RUG_COLORS[rb.def.dept ?? 'none']), pattern: 'border' });
+  if (!commandCenter) rb.pendants(cx, (pz0 + pz1) / 2, Math.ceil(n / 2), DESK_W * 2);
 
-  for (const row of [-1, 1] as const) {
+  for (const row of rows) {
     // row -1 = north half: agent sits north of the desk, facing south.
     const deskZ = cz + (row * DESK_D) / 2;
     const deskEdge = cz + row * DESK_D;
@@ -485,6 +697,7 @@ function buildMeetingRoom(rb: RoomBuilder) {
   const tw = alongX ? tableL : tableW;
   const td = alongX ? tableW : tableL;
   rb.out.tables.push({ x: cx, z: cz, w: tw, d: td, h: 0.9 });
+  rb.pendants(cx, cz, Math.max(2, Math.round(tableL / 2.6)), tableL / Math.max(2, Math.round(tableL / 2.6)), alongX ? 'x' : 'z');
   const chairOut = 0.75;
   rb.obstacle(cx, cz, tw + (alongX ? 0 : chairOut * 2 + 0.4), td + (alongX ? chairOut * 2 + 0.4 : 0));
 
@@ -542,6 +755,8 @@ function buildLibrary(rb: RoomBuilder) {
   const cx = (rb.x0 + rb.x1) / 2;
   const cz = (rb.z0 + rb.z1) / 2 + (back === 'n' ? 1 : -1);
   rb.out.tables.push({ x: cx, z: cz, w: 4.2, d: 2.0, h: 0.85 });
+  rb.pendants(cx, cz, 2, 2.2, 'x', { kind: 'dome', color: '#2d5a45' });
+  rb.out.rugs.push({ x: cx, z: cz, w: 7, d: 5.4, color: '#c7a27c', pattern: 'kilim' });
   rb.obstacle(cx, cz, 4.2, 2.0 + 1.8);
   for (const dx of [-1.2, 0, 1.2]) {
     for (const row of [-1, 1] as const) {
@@ -604,6 +819,7 @@ function buildLounge(rb: RoomBuilder) {
   for (const [tx, tz] of tables) {
     rb.out.tables.push({ x: tx, z: tz, w: 1.2, d: 1.2, h: 1.15, round: true });
     rb.obstacle(tx, tz, 1.2, 1.2);
+    rb.pendants(tx, tz, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, 2.7);
     for (let k = 0; k < 3; k++) {
       const a = (k / 3) * Math.PI * 2 + 0.4;
       const r = 0.6 + APPROACH_PAD;
@@ -614,7 +830,8 @@ function buildLounge(rb: RoomBuilder) {
   // Two sofa groups on the east side.
   for (const gx of [rb.x1 - 11.5, rb.x1 - 5]) {
     const gz = (rb.z0 + rb.z1) / 2 + 0.5;
-    rb.place('rugRectangle', gx, gz, HALF_PI);
+    rb.out.rugs.push({ x: gx, z: gz, w: 5.2, d: 6.6, color: '#d9c7ae', pattern: 'kilim' });
+    rb.pendants(gx, gz, 1, 0, 'x', { kind: 'dome', color: '#c9a45c' }, 2.45);
     rb.placeSolid('tableCoffee', gx, gz, 0);
     for (const row of [-1, 1] as const) {
       const sz = gz + row * (FURN.tableCoffee.d / 2 + 1.6 + FURN.loungeSofa.d / 2);
@@ -666,6 +883,7 @@ function buildLobby(rb: RoomBuilder) {
     rb.place('computerKeyboard', rx + dx, rz - DESK_D * 0.22, FACE.n, DESK_H);
   }
   rb.obstacle(rx, rz, DESK_W * 2, DESK_D + 0.2);
+  for (const [dx, y] of [[-1.6, 2.9], [-0.5, 3.2], [0.6, 2.75], [1.7, 3.05]] as const) rb.pendants(rx + dx, rz + 0.3, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, y);
   // Two receptionists behind the counter, facing the entrance.
   for (const dx of [-DESK_W / 2, DESK_W / 2]) {
     const z = rz - DESK_D / 2 - 0.5;
@@ -752,6 +970,7 @@ function buildStudio(rb: RoomBuilder) {
   const tz = z0 + 8.2;
   const tableL = 7.6;
   rb.out.tables.push({ x: cx, z: tz, w: tableL, d: 2.2, h: 0.9 });
+  rb.pendants(cx, tz, 3, tableL / 3);
   rb.obstacle(cx, tz, tableL, 2.2 + 1.9);
   for (let i = 0; i < 4; i++) {
     const x = cx - tableL / 2 + (tableL / 4) * (i + 0.5);
@@ -884,6 +1103,7 @@ function buildLinearRoom(rb: RoomBuilder) {
   const tx = (x0 + x1) / 2;
   const tz = z0 + 8.5;
   rb.out.tables.push({ x: tx, z: tz, w: 1.3, d: 1.3, h: 1.1, round: true });
+  rb.pendants(tx, tz, 1, 0, 'x', { kind: 'dome', color: '#5e6ad2' }, 2.7);
   rb.obstacle(tx, tz, 1.3, 1.3);
   for (let k = 0; k < 4; k++) {
     const a = (k / 4) * Math.PI * 2 + 0.4;
@@ -915,7 +1135,8 @@ function buildMediaStudio(rb: RoomBuilder) {
   // --- Podcast booth ---------------------------------------------------------
   const px = x0 + 6;
   const pz = (z0 + z1) / 2 + 0.5;
-  rb.out.rugs.push({ x: px, z: pz, w: 6.4, d: 6.4, color: '#b86b4b' });
+  rb.out.rugs.push({ x: px, z: pz, w: 6.4, d: 6.4, color: '#b86b4b', pattern: 'kilim' });
+  rb.pendants(px, pz, 1, 0, 'x', { kind: 'dome', color: '#1f2229' }, 2.5);
   rb.out.tables.push({ x: px, z: pz, w: 1.7, d: 1.7, h: 0.78, round: true });
   rb.obstacle(px, pz, 1.7 + 1.5, 1.7 + 1.5);
   for (const [dx, dz, face] of [
@@ -1104,6 +1325,8 @@ export function buildLayout(seed = 7): OfficeLayout {
     rooms: new Map(),
     walls: [],
     rugs: [],
+    pendants: [],
+    booths: [],
     props: [],
     obstacles: [],
     placements: [],
@@ -1199,11 +1422,17 @@ export function buildLayout(seed = 7): OfficeLayout {
                 ? 'concrete'
                 : def.kind === 'linear'
                   ? 'terrazzo'
-                  : 'wood';
+                  : (def.pattern ?? 'wood');
     out.floors.push({ x0: rb.x0, z0: rb.z0, x1: rb.x1, z1: rb.z1, color: def.floor, y: 0.01, pattern });
   }
 
   buildWalls(out, roomLayouts);
+
+  // Phone booths along the east hallway, next to Engineering.
+  for (const z of [28.6, 30.4]) addBooth(out, BUILDING.x1 - WALL_THICKNESS / 2 - 0.05 - BOOTH.d / 2, z, FACE.w, BOOTH_COLORS[out.booths.length % BOOTH_COLORS.length]);
+
+  // Navy runners with brass borders down the two main corridors.
+  for (const z of [21, 45]) out.rugs.push({ x: (-6 + 96) / 2, z, w: 102, d: 2.6, color: '#ffffff', pattern: 'runner' });
 
   // Security: a guard on each side of every server-room door, facing the hallway.
   const server = roomLayouts.find((r) => r.def.kind === 'server');
@@ -1324,10 +1553,6 @@ function buildLandscape(out: OfficeLayout, rng: Rng) {
   for (let x = BUILDING.x0; x <= BUILDING.x1; x += 1.6) bush(x + rng.float(-0.3, 0.3), BUILDING.z0 - 1.3 + rng.float(-0.2, 0.2), rng.float(0.8, 1.2));
   for (const x of [BUILDING.x0 - 1.3, BUILDING.x1 + 1.3]) {
     for (let z = BUILDING.z0 + 1; z <= SIDE_EXIT_Z - 5; z += 1.6) bush(x + rng.float(-0.2, 0.2), z, rng.float(0.8, 1.15));
-  }
-  // Tree line behind the building (purely decorative, outside the walkable area).
-  for (let x = BUILDING.x0 - 6; x <= BUILDING.x1 + 8; x += rng.float(6, 9)) {
-    out.trees.push({ x, z: BUILDING.z0 - 6 - rng.float(0, 4), s: rng.float(0.9, 1.35) });
   }
 }
 

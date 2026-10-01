@@ -25,9 +25,9 @@ export type Phase = 'walking' | 'sitting' | 'seated' | 'standingUp' | 'standing'
  * Vertical offset while seated per seat type. The Kenney sit clip is a
  * floor-sitting pose (hips at ~0), so we lift the whole body to seat height.
  */
-const SEAT_Y: Record<SeatKind, number> = { desk: 0.52, meeting: 0.52, sofa: 0.4, chair: 0.46 };
+const SEAT_Y: Record<SeatKind, number> = { desk: 0.52, meeting: 0.52, sofa: 0.4, chair: 0.46, lap: 0.4 };
 /** Pull the seated agent slightly back from the chair centre toward the backrest. */
-const SEAT_BACK: Record<SeatKind, number> = { desk: 0.08, meeting: 0.08, sofa: 0.1, chair: 0.0 };
+const SEAT_BACK: Record<SeatKind, number> = { desk: 0.08, meeting: 0.08, sofa: 0.1, chair: 0.0, lap: 0.1 };
 
 const BASE_SPEED = 2.4;
 const ARRIVE_DIST = 0.3;
@@ -201,7 +201,7 @@ export class Body<C extends Puppet = Character> {
     this.phase = 'sitting';
     const back = SEAT_BACK[seat.kind];
     const to = v2(seat.pos.x - Math.sin(seat.yaw) * back, seat.pos.z - Math.cos(seat.yaw) * back);
-    this.trans = { from: v2(this.x, this.z), to, fromY: 0, toY: SEAT_Y[seat.kind], fromYaw: this.yaw, toYaw: seat.yaw, t: 0, dur: 0.5 };
+    this.trans = { from: v2(this.x, this.z), to, fromY: 0, toY: seat.y ?? SEAT_Y[seat.kind], fromYaw: this.yaw, toYaw: seat.yaw, t: 0, dur: 0.5 };
     this.char.play('sit', 0.25);
   }
 
@@ -291,7 +291,7 @@ export class Body<C extends Puppet = Character> {
     this.char.root.position.set(this.x, this.y, this.z);
     this.char.root.rotation.y = this.yaw;
     const seated = this.phase === 'seated';
-    this.char.update(dt, seated ? { ...pose, seated } : { handUp: pose.handUp, shake: pose.shake, ride: pose.ride, sweep: pose.sweep, wipe: pose.wipe }, time);
+    this.char.update(dt, seated ? { ...pose, seated, lap: this.goal?.kind === 'seat' && this.goal.seat.kind === 'lap' } : { handUp: pose.handUp, shake: pose.shake, ride: pose.ride, sweep: pose.sweep, wipe: pose.wipe }, time);
   }
 
   private faceYaw(): number | null {
