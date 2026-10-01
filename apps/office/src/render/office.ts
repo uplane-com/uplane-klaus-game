@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Pendants } from './pendants';
+import { Bookshelves } from './bookshelves';
 import { CAMPUS, City } from './city';
 import { PLAZA } from '../config/office';
 import { BIKE_RACK, BUS_STOP_X, HELIPAD, ROAD } from '../config/transport';
@@ -66,6 +67,7 @@ export class OfficeView {
     this.buildRugs();
     this.pendants = new Pendants(this.layout.pendants, radialGlow());
     this.group.add(this.pendants.group);
+    this.group.add(new Bookshelves(this.layout.bookshelves).group);
     this.buildProps();
     outdoors(() => this.buildLandscape());
     this.collectOutdoor();

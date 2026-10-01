@@ -4,14 +4,16 @@ import { Rng } from '../util/rng';
 
 /**
  * The neighbourhood around 500 Sansome St, San Francisco (Financial District).
- * x = east, z = south. The office sits on Sansome St (west side of the lot),
- * Clay St runs in front, Washington St behind, Battery St to the east.
+ * The city is turned 90° against the compass so the office faces Sansome:
+ * scene north (−z) is real east. Sansome St runs in front of the office,
+ * Battery St behind it, Washington St on the left (west) and Clay St on the right.
  *
- * Neighbours: the Transamerica Pyramid + Redwood Park right across Sansome,
- * big brick blocks along Washington St behind us, One Maritime Plaza (the black
- * X-braced tower) and the Embarcadero Center slabs to the east, 555 California
- * and the old Federal Reserve across Clay, 101 California to the south-east,
- * and further out the Ferry Building, Salesforce Tower and Coit Tower.
+ * Neighbours: the Transamerica Pyramid + Redwood Park right across Washington,
+ * big blocks along Battery behind us with One Maritime Plaza (the black X-braced
+ * tower) and the Embarcadero Center slabs beyond, Jackson Square's brick
+ * low-rise past Washington, the old Federal Reserve, 555/101 California and
+ * Salesforce Tower to the right, the bay with the Ferry Building in the back
+ * and Coit Tower on Telegraph Hill far left.
  *
  * Buildings across Clay St (between the camera and us) stay low so they never hide
  * it. Facades are merged per material (a handful of draw calls) and their
@@ -20,17 +22,17 @@ import { Rng } from '../util/rng';
 
 /** Campus lot (paved) the city keeps clear of. */
 export const CAMPUS = { x0: -42, z0: -4, x1: 112, z1: 80 };
-/** Water (the bay) starts east of here. */
-const SHORE_X = 258;
+/** Water (the bay) starts north of here (real east: the Embarcadero). */
+const SHORE_Z = -168;
 
 /** Block columns (x) and rows (z), separated by ~10 m streets. */
 const COLS: [number, number][] = [
   [-242, -212], [-202, -172], [-162, -132], [-122, -92], [-82, -52],
   [-42, -12], [-2, 28], [38, 68], [78, 112],
-  [124, 154], [164, 194], [204, 234],
+  [124, 154], [164, 194], [204, 234], [244, 274], [284, 314],
 ];
 const ROWS: [number, number][] = [
-  [-204, -174], [-164, -134], [-124, -94], [-84, -54], [-44, -14],
+  [-164, -134], [-124, -94], [-84, -54], [-44, -14],
   [-4, 16], [26, 56], [66, 80],
   [92, 122], [132, 162], [172, 202], [212, 242],
 ];
@@ -184,16 +186,17 @@ export class City {
   // -- ground ---------------------------------------------------------------
 
   private buildGround() {
-    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(SHORE_X + 420, 900).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#5d6067', roughness: 1 }));
-    asphalt.position.set((SHORE_X - 420) / 2, -0.04, 30);
+    const depth = 450 - SHORE_Z;
+    const asphalt = new THREE.Mesh(new THREE.PlaneGeometry(900, depth).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#5d6067', roughness: 1 }));
+    asphalt.position.set(40, -0.04, SHORE_Z + depth / 2);
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(500, 900).rotateX(-Math.PI / 2),
+      new THREE.PlaneGeometry(900, 500).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: '#4c7c9e', roughness: 0.25, metalness: 0.15 }),
     );
-    water.position.set(SHORE_X + 250, -0.03, 30);
+    water.position.set(40, -0.03, SHORE_Z - 250);
     // Embarcadero promenade along the shore.
-    const promenade = new THREE.Mesh(new THREE.PlaneGeometry(10, 900).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#cfc8b8', roughness: 0.95 }));
-    promenade.position.set(SHORE_X - 5, -0.035, 30);
+    const promenade = new THREE.Mesh(new THREE.PlaneGeometry(900, 10).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#cfc8b8', roughness: 0.95 }));
+    promenade.position.set(40, -0.035, SHORE_Z + 5);
     this.group.add(asphalt, water, promenade);
   }
 
@@ -203,7 +206,7 @@ export class City {
     for (const [x0, x1] of COLS) {
       for (const [z0, z1] of ROWS) {
         const r = { x0, z0, x1, z1 };
-        if (overlaps(r, CAMPUS) || this.reserved.some((q) => overlaps(r, q))) continue;
+        if (z0 < SHORE_Z + 10 || overlaps(r, CAMPUS) || this.reserved.some((q) => overlaps(r, q))) continue;
         this.buildBlock(r);
       }
     }
@@ -215,17 +218,19 @@ export class City {
     const cx = (x0 + x1) / 2;
     const cz = (z0 + z1) / 2;
     this.box('slab', cx, cz, w, d, 0, 0.18, 'slab');
-    // Across Clay St (between the camera and the office): low so nothing hides the office.
+    // Across Sansome St (between the camera and the office): low so nothing hides the office.
     const foreground = cz > CAMPUS.z1 && cx < 118;
-    // Behind the office, north of Washington St: big brick and stone blocks.
-    const jackson = cz < CAMPUS.z0 && cx > -50 && cx < 115;
+    // Behind the office, along Battery St: big brick and stone blocks.
+    const behind = cz < CAMPUS.z0 && cx > -50 && cx < 120;
+    // Jackson Square past Washington St: historic brick low-rise.
+    const jackson = cx < CAMPUS.x0 && cz > -50 && cz < CAMPUS.z1;
     const far = Math.hypot(cx - 35, cz - 30) > 190;
-    if (!jackson && this.rng.chance(foreground ? 0.1 : 0.06)) return this.park(x0, z0, x1, z1);
+    if (!behind && this.rng.chance(foreground ? 0.1 : 0.06)) return this.park(x0, z0, x1, z1);
 
     const inset = 1.6;
     const iw = w - inset * 2;
     const id = d - inset * 2;
-    const split = foreground ? this.rng.pick([2, 4, 4]) : jackson ? this.rng.pick([1, 2, 2]) : this.rng.pick([1, 1, 2, 4]);
+    const split = foreground || jackson ? this.rng.pick([2, 4, 4]) : behind ? this.rng.pick([1, 2, 2]) : this.rng.pick([1, 1, 2, 4]);
     const lots: [number, number, number, number][] = [];
     const ix = x0 + inset;
     const iz = z0 + inset;
@@ -242,10 +247,10 @@ export class City {
     for (const [lx, lz, lw, ld] of lots) {
       const x = lx + lw / 2;
       const z = lz + ld / 2;
-      if (jackson) {
-        // Big brick and stone blocks with cornices along Washington St (behind the office, so they never hide it).
+      if (behind || jackson) {
+        // Brick and stone blocks with cornices: big behind the office, 2–4 storeys in Jackson Square.
         const facade: Facade = this.rng.pick(['brick', 'brick', 'brick', 'white', 'stone']);
-        const h = this.rng.float(20, 36);
+        const h = behind ? this.rng.float(20, 36) : this.rng.float(8, 14);
         this.box(facade, x, z, lw, ld, 0.18, h);
         this.box('trim', x, z, lw + 0.5, ld + 0.5, h, h + 0.6);
         this.roofDetails(x, z, lw, ld, h + 0.6);
@@ -335,11 +340,12 @@ export class City {
       mesh.position.set(x, 0.01, z);
       this.group.add(mesh);
     };
-    label('SANSOME ST', -47, 30, Math.PI / 2);
-    label('WASHINGTON ST', 35, -9, 0);
-    label('BATTERY ST', 118, 30, Math.PI / 2);
-    label('CLAY ST', -20, 87.5, 0);
-    label('MONTGOMERY ST', -87, -40, Math.PI / 2);
+    label('SANSOME ST', -20, 87.5, 0);
+    label('BATTERY ST', 35, -9, 0);
+    label('WASHINGTON ST', -47, 30, Math.PI / 2);
+    label('CLAY ST', 118, 30, Math.PI / 2);
+    label('MONTGOMERY ST', 35, 127, 0);
+    label('JACKSON ST', -87, 30, Math.PI / 2);
   }
 
   // -- landmarks --------------------------------------------------------------
@@ -350,22 +356,25 @@ export class City {
     this.embarcaderoCenter();
     this.californiaStreet();
     this.federalReserve();
-    this.salesforce(219, 187);
-    this.coitTower(-120, -190);
-    this.ferryBuilding(SHORE_X + 12, 60);
+    this.salesforce(259, 41);
+    this.coitTower(-200, 30);
+    this.ferryBuilding(200, SHORE_Z - 12);
     this.skylineTowers();
     // Sydney G. Walton Square, the little park by Jackson & Front.
-    this.reserved.push({ x0: 164, z0: -44, x1: 194, z1: -14 });
-    this.park(164, -44, 194, -14, 16);
+    this.reserved.push({ x0: -82, z0: -44, x1: -52, z1: -14 });
+    this.park(-82, -44, -52, -14, 16);
   }
 
-  /** Transamerica Pyramid (600 Montgomery) right across Sansome, with Redwood Park on its north side. */
+  /**
+   * Transamerica Pyramid (600 Montgomery) on the left, right across Washington St from the office,
+   * with Redwood Park at its back. It sits beside (not in front of) the office, so it never hides it.
+   */
   private transamerica() {
     const area = { x0: -82, z0: -4, x1: -52, z1: 56 };
     this.reserved.push(area);
     const x = -67;
     const z = 34;
-    this.box('slab', x, (area.z0 + area.z1) / 2, 30, 70, 0, 0.18, 'slab');
+    this.box('slab', x, (area.z0 + area.z1) / 2, 30, 60, 0, 0.18, 'slab');
     // Redwood Park: a grove of tall redwoods.
     this.box('slab', x, 7, 26, 18, 0.18, 0.26, 'grass');
     for (let k = 0; k < 12; k++) this.trees.push({ x: x + this.rng.float(-11, 11), z: this.rng.float(0, 13), s: this.rng.float(1.2, 1.7), y: 0.26 });
@@ -387,9 +396,9 @@ export class City {
 
   /** One Maritime Plaza (Washington & Battery): black tower with white X-bracing outside the facade. */
   private maritimePlaza() {
-    const x = 139;
+    const x = -27;
     const z = -29;
-    this.reserved.push({ x0: 124, z0: -44, x1: 154, z1: -14 });
+    this.reserved.push({ x0: -42, z0: -44, x1: -12, z1: -14 });
     this.box('slab', x, z, 30, 30, 0, 0.18, 'slab');
     const w = 20;
     const h = 84;
@@ -411,17 +420,17 @@ export class City {
     this.group.add(new THREE.Mesh(mergeGeometries(braces)!, new THREE.MeshStandardMaterial({ color: '#f2f2ee', roughness: 0.5 })));
   }
 
-  /** Embarcadero Center: four white slab towers with vertical setbacks, east towards the bay. */
+  /** Embarcadero Center: four white slab towers with vertical setbacks, towards the bay. */
   private embarcaderoCenter() {
-    this.reserved.push({ x0: 164, z0: -4, x1: 234, z1: 56 });
     const towers: [number, number, number][] = [
-      [179, 6, 62],
-      [219, 6, 70],
-      [179, 41, 66],
-      [219, 41, 58],
+      [53, -69, 62],
+      [53, -109, 70],
+      [13, -109, 66],
+      [95, -109, 58],
     ];
     for (const [x, z, h] of towers) {
-      const d = z < 20 ? 20 : 30;
+      this.reserved.push({ x0: x - 15, z0: z - 15, x1: x + 15, z1: z + 15 });
+      const d = 30;
       this.box('slab', x, z, 30, d, 0, 0.18, 'slab');
       this.box('stone', x, z, 28, d - 4, 0.18, 9);
       this.box('white', x, z, 24, 11, 9, h);
@@ -430,20 +439,20 @@ export class City {
     }
   }
 
-  /** 555 California (dark granite, across Clay to the south-west) and 101 California (glass, south-east). */
+  /** 555 California (dark granite) and 101 California (round glass), both to the right of the office. */
   private californiaStreet() {
-    this.reserved.push({ x0: -122, z0: 92, x1: -92, z1: 122 });
-    this.box('slab', -107, 107, 30, 30, 0, 0.18, 'slab');
-    this.box('stone', -107, 107, 28, 28, 0.18, 6);
-    this.box('granite', -107, 109, 20, 18, 6, 95);
-    for (const dx of [-6, 0, 6]) this.box('granite', -107 + dx, 99.4, 3, 1.2, 6, 93);
-    this.box('detail', -107, 109, 20.6, 18.6, 95, 97, 'detail');
+    this.reserved.push({ x0: 164, z0: 92, x1: 194, z1: 122 });
+    this.box('slab', 179, 107, 30, 30, 0, 0.18, 'slab');
+    this.box('stone', 179, 107, 28, 28, 0.18, 6);
+    this.box('granite', 179, 109, 20, 18, 6, 95);
+    for (const dx of [-6, 0, 6]) this.box('granite', 179 + dx, 99.4, 3, 1.2, 6, 93);
+    this.box('detail', 179, 109, 20.6, 18.6, 95, 97, 'detail');
 
-    this.reserved.push({ x0: 124, z0: 92, x1: 154, z1: 122 });
-    this.box('slab', 139, 107, 30, 30, 0, 0.18, 'slab');
+    this.reserved.push({ x0: 164, z0: -44, x1: 194, z1: -14 });
+    this.box('slab', 179, -29, 30, 30, 0, 0.18, 'slab');
     const glass = this.landmarkMaterial('glass', 3, 2.6);
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 66, 12, 1, true).translate(0, 33, 0), glass);
-    shaft.position.set(139, 0.18, 107);
+    shaft.position.set(179, 0.18, -29);
     const top = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 10, 9, 12).translate(0, 66 + 4.5, 0), glass);
     top.position.copy(shaft.position);
     this.group.add(shaft, top);
@@ -451,19 +460,19 @@ export class City {
 
   /** Old Federal Reserve Bank (400 Sansome) across Clay: stone hall with a colonnade facing us. */
   private federalReserve() {
-    const x = -27;
-    const z = 107;
-    this.reserved.push({ x0: -42, z0: 92, x1: -12, z1: 122 });
+    const x = 139;
+    const z = 41;
+    this.reserved.push({ x0: 124, z0: 26, x1: 154, z1: 56 });
     this.box('slab', x, z, 30, 30, 0, 0.18, 'slab');
-    this.box('stone', x, z + 2, 26, 22, 0.18, 15);
-    this.box('trim', x, z + 2, 27, 23, 15, 16.2);
+    this.box('stone', x + 2, z, 22, 26, 0.18, 15);
+    this.box('trim', x + 2, z, 23, 27, 15, 16.2);
     const cols: THREE.BufferGeometry[] = [];
-    for (let k = 0; k < 8; k++) cols.push(new THREE.CylinderGeometry(0.6, 0.7, 12, 10).translate(x - 10.5 + k * 3, 6.4, z - 10.6));
+    for (let k = 0; k < 8; k++) cols.push(new THREE.CylinderGeometry(0.6, 0.7, 12, 10).translate(x - 10.6, 6.4, z - 10.5 + k * 3));
     this.group.add(new THREE.Mesh(mergeGeometries(cols)!, new THREE.MeshStandardMaterial({ color: '#efe8da', roughness: 0.7 })));
-    this.box('trim', x, z - 10.6, 25, 1.6, 12.4, 14);
+    this.box('trim', x - 10.6, z, 1.6, 25, 12.4, 14);
   }
 
-  /** Two skyscrapers in the background, behind the blocks across Washington St. */
+  /** Two skyscrapers in the background, behind the blocks across Battery St. */
   private skylineTowers() {
     // Blue-glass tower with stepped setbacks and a lit spire.
     this.reserved.push({ x0: -2, z0: -84, x1: 28, z1: -54 });
@@ -539,12 +548,12 @@ export class City {
     }
   }
 
-  /** Ferry Building: long hall on a pier with its clock tower, at the foot of Market Street. */
+  /** Ferry Building: long hall on a pier along the shore with its clock tower, at the foot of Market Street. */
   private ferryBuilding(x: number, z: number) {
     const len = 90;
-    this.box('slab', x, z, 20, len + 10, -0.03, 0.4, 'slab');
-    this.box('stone', x, z, 13, len, 0.4, 11);
-    this.box('stone', x, z, 9, len - 6, 11, 14, 'roof');
+    this.box('slab', x, z, len + 10, 20, -0.03, 0.4, 'slab');
+    this.box('stone', x, z, len, 13, 0.4, 11);
+    this.box('stone', x, z, len - 6, 9, 11, 14, 'roof');
     this.box('stone', x, z, 8, 8, 14, 46);
     this.box('stone', x, z, 6, 6, 46, 54);
     const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 8, 4).rotateY(Math.PI / 4).translate(0, 4, 0), new THREE.MeshStandardMaterial({ color: '#8c7a5c', roughness: 0.8 }));

@@ -55,6 +55,16 @@ export interface Booth {
   seat: Seat;
 }
 
+/** Open shelving unit filled with books. `rot` = direction its open front faces (0 = +z). */
+export interface Bookshelf {
+  x: number;
+  z: number;
+  rot: number;
+  w: number;
+  d: number;
+  h: number;
+}
+
 /** Pendant lamp hanging above furniture; `y` is the bottom of the shade. */
 export interface Pendant {
   x: number;
@@ -201,6 +211,7 @@ export interface OfficeLayout {
   rugs: Rug[];
   pendants: Pendant[];
   booths: Booth[];
+  bookshelves: Bookshelf[];
   props: Prop[];
   obstacles: Box[];
   placements: Placement[];
@@ -746,14 +757,34 @@ function buildLibrary(rb: RoomBuilder) {
     for (let i = 0; i < count; i++) {
       const t = (1.6 + (usable - count * (bw + 0.3)) / 2 + (bw + 0.3) * (i + 0.5)) / len;
       const p = rb.againstWall(side, t, bd / 2 + 0.05);
-      rb.placeSolid('bookcaseClosedWide', p.x, p.z, FACE[faceDir], 0.1);
+      rb.out.bookshelves.push({ x: p.x, z: p.z, rot: FACE[faceDir], w: bw, d: bd, h: 2.3 });
+      const sideways = side === 'e' || side === 'w';
+      rb.obstacle(p.x, p.z, (sideways ? bd : bw) + 0.1, (sideways ? bw : bd) + 0.1);
       const sp = rb.againstWall(side, t, bd + 0.1 + APPROACH_PAD);
       rb.spot(sp, FACE[side], true);
     }
   }
-  // Reading table in the middle.
   const cx = (rb.x0 + rb.x1) / 2;
-  const cz = (rb.z0 + rb.z1) / 2 + (back === 'n' ? 1 : -1);
+  const toDoor = back === 'n' ? 1 : -1;
+  const backZ = back === 'n' ? rb.z0 : rb.z1;
+
+  // Double-sided bookcase island across the back half, browsed from both sides.
+  const iz = backZ + toDoor * 5.6;
+  const gap = 0.5;
+  for (const dx of [-(bw + gap), 0, bw + gap]) {
+    for (const s of [-1, 1] as const) {
+      // s = -1: the half facing the back wall, s = 1: the half facing the room.
+      const facing = s * toDoor === 1 ? FACE.s : FACE.n;
+      rb.out.bookshelves.push({ x: cx + dx, z: iz + s * toDoor * (bd / 2), rot: facing, w: bw, d: bd, h: 2.1 });
+      rb.spot(v2(cx + dx, iz + s * toDoor * (bd + APPROACH_PAD)), facing + Math.PI, true);
+    }
+  }
+  rb.obstacle(cx, iz, 3 * bw + 2 * gap + 0.2, bd * 2 + 0.2);
+  rb.placeSolid('pottedPlant', cx - (1.5 * bw + gap + 0.9), iz, 0.4);
+  rb.placeSolid('pottedPlant', cx + (1.5 * bw + gap + 0.9), iz, 2.1);
+
+  // Reading table in front of the island.
+  const cz = backZ + toDoor * 11;
   rb.out.tables.push({ x: cx, z: cz, w: 4.2, d: 2.0, h: 0.85 });
   rb.pendants(cx, cz, 2, 2.2, 'x', { kind: 'dome', color: '#2d5a45' });
   rb.out.rugs.push({ x: cx, z: cz, w: 7, d: 5.4, color: '#c7a27c', pattern: 'kilim' });
@@ -766,8 +797,22 @@ function buildLibrary(rb: RoomBuilder) {
       rb.seat('chair', v2(cx + dx, pz), yaw, v2(cx + dx, cz + row * (1.9 + APPROACH_PAD)));
     }
   }
-  rb.place('lampRoundFloor', rb.x0 + 1.2, rb.z1 - 1.3, 0);
-  rb.place('lampRoundFloor', rb.x1 - 1.2, rb.z1 - 1.3, 0);
+  rb.place('books', cx - 0.9, cz, 0.3, 0.85);
+  rb.place('books', cx + 1.1, cz + 0.2, 2.2, 0.85);
+
+  // Reading corners by the door: an armchair on a round rug, side table with books, floor lamp.
+  const nookZ = backZ + toDoor * (rb.def.d - 2.6);
+  for (const side of [-1, 1] as const) {
+    const ax = side === -1 ? rb.x0 + 2.2 : rb.x1 - 2.2;
+    rb.out.rugs.push({ x: ax, z: nookZ - toDoor * 0.6, w: 3, d: 3, color: '#b9875e', pattern: 'round' });
+    rb.placeSolid('loungeChair', ax, nookZ, side === -1 ? FACE.e : FACE.w);
+    rb.seat('sofa', v2(ax - side * 0.15, nookZ), side === -1 ? FACE.e : FACE.w, v2(ax - side * (FURN.loungeChair.d / 2 + APPROACH_PAD), nookZ));
+    const tz = nookZ - toDoor * 1.6;
+    rb.out.tables.push({ x: ax, z: tz, w: 0.8, d: 0.8, h: 0.6, round: true });
+    rb.obstacle(ax, tz, 0.8, 0.8);
+    rb.place('books', ax, tz, side * 0.6, 0.6);
+    rb.place('lampRoundFloor', ax + side * 1.0, nookZ + toDoor * 1.1, 0);
+  }
 }
 
 function buildServerRoom(rb: RoomBuilder) {
@@ -1327,6 +1372,7 @@ export function buildLayout(seed = 7): OfficeLayout {
     rugs: [],
     pendants: [],
     booths: [],
+    bookshelves: [],
     props: [],
     obstacles: [],
     placements: [],
