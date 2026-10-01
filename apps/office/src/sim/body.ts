@@ -50,6 +50,9 @@ export class Body<C extends Puppet = Character> {
   private pendingGoal: Goal | null = null;
   private stuckTimer = 0;
   private lastDist = Infinity;
+  /** Closest distance to the goal so far and how long we've been failing to beat it (not reset by re-paths). */
+  private bestDist = Infinity;
+  private noProgress = 0;
   private squeezed = false;
   private pauseTimer = 0;
   private pauseYaw = 0;
@@ -161,6 +164,8 @@ export class Body<C extends Puppet = Character> {
     this.phase = 'walking';
     this.stuckTimer = 0;
     this.lastDist = Infinity;
+    this.bestDist = Infinity;
+    this.noProgress = 0;
     if (!this.agent) {
       this.agent = this.nav.addAgent(v2(this.x, this.z), this.speed);
       if (this.hurried) this.nav.setHurry(this.agent, this.speed);
@@ -307,6 +312,12 @@ export class Body<C extends Puppet = Character> {
     const target = this.targetOf(g);
     const d = dist2(v2(this.x, this.z), target);
     // Crowded goals: accept arrival when close and not making progress.
+    if (d < this.bestDist - 0.3) {
+      this.bestDist = d;
+      this.noProgress = 0;
+    } else {
+      this.noProgress += dt;
+    }
     if (d < this.lastDist - 0.05) {
       this.lastDist = d;
       this.stuckTimer = 0;
@@ -322,8 +333,17 @@ export class Body<C extends Puppet = Character> {
     }
     // Getting into a vehicle: close enough to the door counts.
     const arriveDist = g.kind === 'exit' ? 1.4 : ARRIVE_DIST;
-    const closeEnough = d < arriveDist || (d < 1.3 && speed < 0.2 && this.stuckTimer > 0.8) || (d < 3 && this.stuckTimer > 6);
+    const closeEnough = d < arriveDist || (d < 1.3 && speed < 0.2 && this.stuckTimer > 0.8) || (d < 3 && this.noProgress > 6);
     if (!closeEnough) {
+      // Last resort: wedged somewhere for a long time (dead-end pocket, gridlock) → hop onto the target.
+      if (this.noProgress > 20 && this.agent) {
+        const p = this.nav.closest(target);
+        this.agent.teleport({ x: p.x, y: 0, z: p.z });
+        this.requestTarget(target);
+        this.noProgress = 0;
+        this.bestDist = Infinity;
+        return;
+      }
       if (this.stuckTimer > 4) {
         this.requestTarget(target);
         this.stuckTimer = 2;

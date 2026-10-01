@@ -408,6 +408,10 @@ class RoomBuilder {
 // ---------------------------------------------------------------------------
 // Room generators
 
+/** Walkable gap between classroom desk rows and between sofas and their coffee table. */
+const ROW_AISLE = 2.6;
+const NOOK_GAP = 2.0;
+
 /** Clear walkway through the middle of every work room (doors are centred). */
 const WORK_AISLE = 3.8;
 /** Gap between the north and south cells. */
@@ -451,10 +455,16 @@ function buildCell(rb: RoomBuilder, kind: WorkCell, c: Cell) {
       return buildDeskPod(rb, c.cx, c.cz, Math.min(4, Math.floor(c.w / DESK_W)));
     case 'pod2':
       return buildDeskPod(rb, c.cx, c.cz, 2);
-    case 'rows':
-      // Classroom rows facing the board on the north wall.
-      for (const dz of [-1.9, 1.7]) buildDeskPod(rb, c.cx, c.cz + dz - 0.5, Math.min(4, Math.floor(c.w / DESK_W)), false, [1]);
+    case 'rows': {
+      // Classroom rows facing the board on the north wall, with a wide aisle between them
+      // (agents walking to the front row need room to pass each other).
+      const n = Math.min(4, Math.floor(c.w / DESK_W));
+      const top = c.cz - c.d / 2;
+      for (const z of [top + 0.3, top + 0.3 + POD_D / 2 + ROW_AISLE]) buildDeskPod(rb, c.cx, z, n, false, [1]);
+      // Fill the strip between the front row and the wall: too narrow to walk, so keep agents out of it.
+      rb.obstacle(c.cx, top - CELL_MARGIN / 2, n * DESK_W, CELL_MARGIN + 0.7);
       return;
+    }
     case 'nook':
       return buildNook(rb, c);
     case 'sofaPair':
@@ -533,10 +543,10 @@ function buildNook(rb: RoomBuilder, c: Cell) {
   rb.out.rugs.push({ x: c.cx, z: c.cz, w: Math.min(c.w, 7.4), d: 6.2, color: rb.rng.pick(NOOK_RUGS), pattern: 'kilim' });
   rb.pendants(c.cx, c.cz, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, 2.4);
   rb.placeSolid('tableCoffee', c.cx, c.cz, 0);
-  const off = FURN.tableCoffee.d / 2 + 1.6 + FURN.loungeDesignSofa.d / 2;
+  const off = FURN.tableCoffee.d / 2 + NOOK_GAP + FURN.loungeDesignSofa.d / 2;
   lapSofa(rb, 'loungeDesignSofa', c.cx, c.cz - off, FACE.s, [-0.75, 0.75]);
   lapSofa(rb, 'loungeDesignSofa', c.cx, c.cz + off, FACE.n, [-0.75, 0.75]);
-  const ax = c.cx + c.outward * (FURN.tableCoffee.w / 2 + 1.6 + FURN.loungeChair.d / 2);
+  const ax = c.cx + c.outward * (FURN.tableCoffee.w / 2 + NOOK_GAP + FURN.loungeChair.d / 2);
   lapSofa(rb, 'loungeChair', ax, c.cz, c.outward === 1 ? FACE.w : FACE.e, [0]);
   rb.place('lampRoundFloor', ax, c.cz - off, 0);
   rb.place('books', c.cx + 0.3, c.cz, 0.5, FURN.tableCoffee.h);
@@ -547,7 +557,7 @@ function buildSofaPair(rb: RoomBuilder, c: Cell) {
   rb.out.rugs.push({ x: c.cx, z: c.cz, w: Math.min(c.w, 4.2), d: 6, color: rb.rng.pick(NOOK_RUGS), pattern: 'kilim' });
   rb.pendants(c.cx, c.cz, 1, 0, 'x', { kind: 'globe', color: '#f6efe2' }, 2.4);
   rb.placeSolid('tableCoffee', c.cx, c.cz, 0);
-  const off = FURN.tableCoffee.d / 2 + 1.6 + FURN.loungeSofa.d / 2;
+  const off = FURN.tableCoffee.d / 2 + NOOK_GAP + FURN.loungeSofa.d / 2;
   lapSofa(rb, 'loungeSofa', c.cx, c.cz - off, FACE.s, [-0.6, 0.6]);
   lapSofa(rb, 'loungeSofa', c.cx, c.cz + off, FACE.n, [-0.6, 0.6]);
 }
@@ -603,8 +613,10 @@ function buildCafe(rb: RoomBuilder, c: Cell) {
     rb.out.tables.push({ x: tx, z: tz, w: 1.3, d: 1.3, h, round: true });
     rb.obstacle(tx, tz, 1.3 + 1.8, 1.3 + 1.8);
     rb.pendants(tx, tz, 1, 0);
-    // Chair directions from the table centre: north, outward, south.
-    for (const a of [Math.PI, side * HALF_PI, 0]) {
+    // Chair directions from the table centre: north, south, and towards the aisle for the aisle-side table
+    // (a chair on the wall side would be unreachable).
+    const angles = side === -c.outward ? [Math.PI, side * HALF_PI, 0] : [Math.PI, 0];
+    for (const a of angles) {
       const dir = v2(Math.sin(a), Math.cos(a));
       const yaw = a + Math.PI;
       const px = tx + dir.x * rChair;
@@ -749,6 +761,10 @@ function buildLibrary(rb: RoomBuilder) {
   const bd = FURN.bookcaseClosedWide.d;
   const back = rb.backSide();
   const sides: Side[] = (['n', 's', 'e', 'w'] as Side[]).filter((s) => !rb.hasDoor(s));
+  const toDoor = back === 'n' ? 1 : -1;
+  const backZ = back === 'n' ? rb.z0 : rb.z1;
+  // Armchair reading corners by the door (built below); keep the side-wall shelves clear of them.
+  const nookZ = backZ + toDoor * (rb.def.d - 2.6);
   for (const side of sides) {
     const len = side === 'n' || side === 's' ? rb.def.w : rb.def.d;
     const usable = len - 3.2;
@@ -757,6 +773,7 @@ function buildLibrary(rb: RoomBuilder) {
     for (let i = 0; i < count; i++) {
       const t = (1.6 + (usable - count * (bw + 0.3)) / 2 + (bw + 0.3) * (i + 0.5)) / len;
       const p = rb.againstWall(side, t, bd / 2 + 0.05);
+      if ((side === 'e' || side === 'w') && Math.abs(p.z - nookZ) < 2.4) continue;
       rb.out.bookshelves.push({ x: p.x, z: p.z, rot: FACE[faceDir], w: bw, d: bd, h: 2.3 });
       const sideways = side === 'e' || side === 'w';
       rb.obstacle(p.x, p.z, (sideways ? bd : bw) + 0.1, (sideways ? bw : bd) + 0.1);
@@ -765,8 +782,6 @@ function buildLibrary(rb: RoomBuilder) {
     }
   }
   const cx = (rb.x0 + rb.x1) / 2;
-  const toDoor = back === 'n' ? 1 : -1;
-  const backZ = back === 'n' ? rb.z0 : rb.z1;
 
   // Double-sided bookcase island across the back half, browsed from both sides.
   const iz = backZ + toDoor * 5.6;
@@ -801,7 +816,6 @@ function buildLibrary(rb: RoomBuilder) {
   rb.place('books', cx + 1.1, cz + 0.2, 2.2, 0.85);
 
   // Reading corners by the door: an armchair on a round rug, side table with books, floor lamp.
-  const nookZ = backZ + toDoor * (rb.def.d - 2.6);
   for (const side of [-1, 1] as const) {
     const ax = side === -1 ? rb.x0 + 2.2 : rb.x1 - 2.2;
     rb.out.rugs.push({ x: ax, z: nookZ - toDoor * 0.6, w: 3, d: 3, color: '#b9875e', pattern: 'round' });
