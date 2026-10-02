@@ -92,7 +92,7 @@ async function main() {
   };
   const source: AgentEventSource | null = apiUrl ? new ApiEventSource(apiUrl, apiKey, onConnection) : null;
   await source?.start((e) => store.apply(e));
-  // ?demo: simulated Uplane agents on top of the real data (at least 100 in total, browser-only).
+  // ?demo: simulated Uplane agents on top of the real data (at least 50 in total, browser-only).
   const countReal = () => {
     let n = 0;
     for (const a of store.agents.values()) if (a.status === 'active' && !a.id.startsWith('demo-')) n++;

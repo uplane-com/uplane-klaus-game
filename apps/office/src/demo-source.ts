@@ -8,9 +8,9 @@ import { Rng } from './util/rng';
  * calm: no incidents, no errors and nothing that needs a human.
  */
 
-const MIN_TOTAL = 100;
+const MIN_TOTAL = 50;
 /** How many demo agents may arrive / leave per second when topping up. */
-const ARRIVAL_RATE = 4;
+const ARRIVAL_RATE = 2;
 const PREFIX = 'demo-';
 
 const FIRST = ['Mia', 'Noah', 'Lena', 'Leo', 'Ava', 'Finn', 'Zoe', 'Liam', 'Ivy', 'Omar', 'Nora', 'Kai', 'Emma', 'Theo', 'Sara', 'Jonas', 'Maya', 'Elias', 'Lara', 'Ben', 'Chloe', 'Luca', 'Hana', 'Milo', 'Aria', 'Felix', 'Nia', 'Oscar', 'Yara', 'Emil'];
@@ -102,7 +102,7 @@ export class DemoSource implements AgentEventSource {
   start(emit: (e: AgentEvent) => void) {
     this.emit = emit;
     // Start with part of the crowd already at work, the rest arrives over time.
-    const initial = Math.max(0, Math.min(60, MIN_TOTAL - this.realCount()));
+    const initial = Math.max(0, Math.min(30, MIN_TOTAL - this.realCount()));
     for (let i = 0; i < initial; i++) this.spawn(true);
     if (this.realTickets() < REAL_TICKETS_ENOUGH) {
       [0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3].forEach((step) => this.addTicket(step));

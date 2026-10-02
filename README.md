@@ -8,7 +8,7 @@ office-wide red alert beacons.
 
 The office shows live data from the office API only; without it the office stays empty.
 `?demo` adds simulated Uplane agents (ads, landing pages, API work, client reports) on top of the real
-data so there are always at least 100 characters; they only exist in that browser and go home as real
+data so there are always at least 50 characters; they only exist in that browser and go home as real
 agents arrive.
 Lighting follows the real sun over San Francisco (day, golden hour, dusk, night); preview any
 SF time with `?time=21:30`.

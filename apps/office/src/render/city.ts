@@ -22,6 +22,8 @@ import { Rng } from '../util/rng';
 
 /** Campus lot (paved) the city keeps clear of. */
 export const CAMPUS = { x0: -42, z0: -4, x1: 112, z1: 80 };
+/** Extra space across Sansome so foreground houses leave the traffic visible. */
+const FOREGROUND_SETBACK = 10;
 /** Water (the bay) starts north of here (real east: the Embarcadero). */
 const SHORE_Z = -168;
 
@@ -207,6 +209,10 @@ export class City {
       for (const [z0, z1] of ROWS) {
         const r = { x0, z0, x1, z1 };
         if (z0 < SHORE_Z + 10 || overlaps(r, CAMPUS) || this.reserved.some((q) => overlaps(r, q))) continue;
+        if (z0 > CAMPUS.z1 && (x0 + x1) / 2 < 118) {
+          r.z0 += FOREGROUND_SETBACK;
+          r.z1 += FOREGROUND_SETBACK;
+        }
         this.buildBlock(r);
       }
     }
