@@ -240,7 +240,7 @@ export interface OfficeLayout {
   /** Charging dock in the east hallway where the office robot waits. */
   robotDock: { x: number; z: number; yaw: number };
   /** Outdoor landscaping: planters along the façade, street lamps, a fountain, bushes. */
-  landscape: { planters: Box[]; lamps: Vec2[]; fountain: { x: number; z: number; r: number } | null; bushes: Tree[]; indoorTrees: Tree[] };
+  landscape: { planters: Box[]; lamps: Vec2[]; fountain: { x: number; z: number; r: number } | null; bushes: Tree[] };
   /** Reception staff seats (always occupied, not agents). */
   receptionists: { x: number; z: number; yaw: number }[];
 }
@@ -1410,7 +1410,7 @@ export function buildLayout(seed = 7): OfficeLayout {
     serviceDoor: v2(BUILDING.x1 + 3, SIDE_EXIT_Z),
     robotDock: { x: BUILDING.x1 - 1.4, z: 12, yaw: FACE.w },
     ticketWall: null,
-    landscape: { planters: [], lamps: [], fountain: null, bushes: [], indoorTrees: [] },
+    landscape: { planters: [], lamps: [], fountain: null, bushes: [] },
     turnstiles: null,
   };
 
@@ -1565,7 +1565,7 @@ export function buildLayout(seed = 7): OfficeLayout {
 /**
  * Landscaping: flower planters along the front façade (leaving the entrance
  * free), street lamps along the curb, a fountain on the west plaza, hedges and
- * bushes around the building and a tree line behind it.
+ * bushes around the building with sparse planting behind it.
  */
 function buildLandscape(out: OfficeLayout, rng: Rng) {
   const L = out.landscape;
@@ -1589,28 +1589,13 @@ function buildLandscape(out: OfficeLayout, rng: Rng) {
     solid(pos.x, pos.z, 0.4, 0.4);
   }
 
-  // Tall indoor trees in the hallways, against the walls between room doors (never mid-corridor).
-  for (const [x, z] of [
-    [22, 18.9],
-    [66, 18.9],
-    [44, 23.1],
-    [80.8, 23.1],
-    [22, 42.9],
-    [66, 42.9],
-    [44, 47.1],
-    [74, 47.1],
-  ]) {
-    L.indoorTrees.push({ x, z, s: rng.float(1.3, 1.5) });
-    solid(x, z, 1.0, 1.0);
-  }
-
   // Fountain on the west plaza.
   L.fountain = { x: BUILDING.x0 + 10, z: PLAZA.z0 + 6.5, r: 2.4 };
   solid(L.fountain.x, L.fountain.z, L.fountain.r * 2, L.fountain.r * 2);
 
   // Hedge-like bushes hugging the building outside (not in front of the side exits).
   const bush = (x: number, z: number, s: number) => L.bushes.push({ x, z, s });
-  for (let x = BUILDING.x0; x <= BUILDING.x1; x += 1.6) bush(x + rng.float(-0.3, 0.3), BUILDING.z0 - 1.3 + rng.float(-0.2, 0.2), rng.float(0.8, 1.2));
+  for (let x = BUILDING.x0; x <= BUILDING.x1; x += 3.2) bush(x + rng.float(-0.3, 0.3), BUILDING.z0 - 1.3 + rng.float(-0.2, 0.2), rng.float(0.8, 1.2));
   for (const x of [BUILDING.x0 - 1.3, BUILDING.x1 + 1.3]) {
     for (let z = BUILDING.z0 + 1; z <= SIDE_EXIT_Z - 5; z += 1.6) bush(x + rng.float(-0.2, 0.2), z, rng.float(0.8, 1.15));
   }

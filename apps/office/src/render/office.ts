@@ -73,7 +73,7 @@ export class OfficeView {
     this.collectOutdoor();
   }
 
-  /** Remember every outdoor material (not light sources, not the indoor trees) for the night dimming. */
+  /** Remember every outdoor material (except light sources) for the night dimming. */
   private collectOutdoor() {
     const seen = new Set<THREE.Material>();
     this.group.traverse((o) => {
@@ -552,25 +552,6 @@ export class OfficeView {
         this.jets.push(jet);
       }
       this.group.add(g);
-    }
-
-    // Indoor trees: white round planter, slim trunk, layered crown.
-    if (L.indoorTrees.length) {
-      const n = L.indoorTrees.length;
-      const pot = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.45, 0.36, 0.7, 20).translate(0, 0.35, 0), std('#f4f5f8', { roughness: 0.35 }), n);
-      const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.07, 1.2, 6).translate(0, 1.2, 0), std('#7a5a3c'), n);
-      const crownA = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.62, 1).scale(1, 0.8, 1).translate(0, 1.95, 0), std('#4f9a5b', { flatShading: true }), n);
-      const crownB = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.45, 1).translate(0.2, 2.45, -0.1), std('#63ad66', { flatShading: true }), n);
-      L.indoorTrees.forEach((t, i) => {
-        q.setFromAxisAngle(v.set(0, 1, 0), t.x);
-        m.compose(v.set(t.x, 0, t.z), q, sc.set(t.s, t.s, t.s));
-        for (const inst of [pot, trunk, crownA, crownB]) inst.setMatrixAt(i, m);
-      });
-      for (const inst of [pot, trunk, crownA, crownB]) {
-        inst.castShadow = true;
-        inst.userData.outdoor = false;
-      }
-      this.group.add(pot, trunk, crownA, crownB);
     }
 
     // Bushes: soft low-poly blobs.
