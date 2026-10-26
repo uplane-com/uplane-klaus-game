@@ -170,27 +170,27 @@ export class Hud {
   }
 
   private onEvent(e: AgentEvent) {
-    const name = (id: string) => this.store.agents.get(id)?.name ?? id;
+    const name = (id: string) => esc(this.store.agents.get(id)?.name ?? id);
     let line: string | null = null;
     switch (e.type) {
       case 'agent.started':
-        line = `👋 <b>${e.agent.name}</b> joined ${ROLES[e.agent.role].label}`;
+        line = `👋 <b>${esc(e.agent.name)}</b> joined ${ROLES[e.agent.role].label}`;
         break;
       case 'agent.handoff':
-        line = `📨 <b>${name(e.fromId)}</b> → <b>${name(e.toId)}</b>: ${e.taskTitle}`;
+        line = `📨 <b>${name(e.fromId)}</b> → <b>${name(e.toId)}</b>: ${esc(e.taskTitle)}`;
         break;
       case 'agent.task_completed':
         line = `✅ <b>${name(e.agentId)}</b> finished a task`;
         break;
       case 'agent.activity':
-        if (e.activity.kind === 'blocked') line = `✋ <b>${name(e.agentId)}</b>: ${e.activity.reason}`;
-        else if (e.activity.kind === 'error') line = `❗ <b>${name(e.agentId)}</b>: ${e.activity.message}`;
+        if (e.activity.kind === 'blocked') line = `✋ <b>${name(e.agentId)}</b>: ${esc(e.activity.reason)}`;
+        else if (e.activity.kind === 'error') line = `❗ <b>${name(e.agentId)}</b>: ${esc(e.activity.message)}`;
         break;
       case 'agent.stopped':
         line = `🚪 <b>${name(e.agentId)}</b> left`;
         break;
       case 'system.status':
-        line = e.status === 'operational' ? `🟢 <b>Status page</b>: ${e.message ?? 'All systems operational'}` : `🚨 <b>Incident</b>: ${e.message ?? e.status}`;
+        line = e.status === 'operational' ? `🟢 <b>Status page</b>: ${esc(e.message ?? 'All systems operational')}` : `🚨 <b>Incident</b>: ${esc(e.message ?? e.status)}`;
         break;
     }
     if (!line) return;
@@ -206,7 +206,7 @@ export class Hud {
     if (!show) return;
     const secs = Math.floor((performance.now() - sys.since) / 1000);
     const label = sys.status === 'outage' ? 'Outage' : 'Degraded';
-    this.incidentEl.innerHTML = `<span class="siren">🚨</span>${label} · ${sys.message}<time>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</time>`;
+    this.incidentEl.innerHTML = `<span class="siren">🚨</span>${label} · ${esc(sys.message)}<time>${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}</time>`;
   }
 
   update(dt: number) {
@@ -282,7 +282,7 @@ export class Hud {
           .join('')}</div>
       </div>`;
     const slot = this.root.querySelector('.system-slot');
-    if (slot) slot.innerHTML = `<span class="system ${ok ? '' : 'bad'}"><i></i>${ok ? 'All systems operational' : sys.message}</span>`;
+    if (slot) slot.innerHTML = `<span class="system ${ok ? '' : 'bad'}"><i></i>${ok ? 'All systems operational' : esc(sys.message)}</span>`;
   }
 
   private renderInspector() {
@@ -297,13 +297,13 @@ export class Hud {
     this.inspectorEl.innerHTML = `
       <div class="insp-head">
         <div>
-          <div class="insp-name">${rec.name}</div>
+          <div class="insp-name">${esc(rec.name)}</div>
           <div class="insp-role"><i class="dot" style="background:${dept.color}"></i>${role.label} · ${dept.label}</div>
         </div>
         <button class="close" data-close>×</button>
       </div>
-      <div class="kv"><span>Status</span><b>${rec.status === 'stopped' ? 'Leaving' : actText}</b></div>
-      <div class="kv"><span>Task</span><b>${rec.task ? rec.task.title : '—'}</b></div>
+      <div class="kv"><span>Status</span><b>${rec.status === 'stopped' ? 'Leaving' : esc(actText)}</b></div>
+      <div class="kv"><span>Task</span><b>${rec.task ? esc(rec.task.title) : '—'}</b></div>
       <div class="kv"><span>Location</span><b>${this.director.locationOf(a)}</b></div>
       <div class="kv"><span>Desk</span><b>${a.desk ? a.desk.roomId : '—'}</b></div>
       <div class="kv"><span>Completed</span><b>${rec.tasksCompleted}</b></div>
@@ -313,7 +313,7 @@ export class Hud {
       <div class="history">${rec.history
         .slice()
         .reverse()
-        .map((h) => `<div><time>${new Date(h.ts).toLocaleTimeString()}</time>${h.text}</div>`)
+        .map((h) => `<div><time>${new Date(h.ts).toLocaleTimeString()}</time>${esc(h.text)}</div>`)
         .join('')}</div>`;
     this.inspectorEl.querySelector('[data-close]')!.addEventListener('click', () => this.select(null));
     this.inspectorEl.querySelector('[data-follow]')!.addEventListener('click', () => {
@@ -362,4 +362,9 @@ function el(tag: string, cls: string): HTMLElement {
   const e = document.createElement(tag);
   e.className = cls;
   return e;
+}
+
+/** Names, titles and messages come from the senders of events: they go into markup as text only. */
+function esc(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

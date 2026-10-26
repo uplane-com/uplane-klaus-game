@@ -252,7 +252,10 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  document.getElementById('app')!.innerHTML = `<pre style="padding:20px;color:#b00;white-space:pre-wrap">${String(err?.stack ?? err)}</pre>`;
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'padding:20px;color:#b00;white-space:pre-wrap';
+  pre.textContent = String(err?.stack ?? err);
+  document.getElementById('app')!.replaceChildren(pre);
   // Unattended screens retry on their own.
   if (urlParams.has('kiosk')) setTimeout(() => location.reload(), 30_000);
 });
