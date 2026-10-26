@@ -292,6 +292,19 @@ export class TransportSystem {
     return t;
   }
 
+  /**
+   * An agent turns back on its way out. Only possible while no vehicle comes for it: then its
+   * waiting spot is free again (a parked bike stays parked). False when a ride is already on its way.
+   */
+  cancelDeparture(id: string): boolean {
+    const t = this.tickets.get(id);
+    if (!t) return true;
+    if (t.vehicle || t.boarded) return false;
+    if (t.spot) t.spot.occupant = null;
+    this.tickets.delete(id);
+    return true;
+  }
+
   /** Walked to the parked bike: hand the character to the bike and ride off. */
   rideAway(id: string, char: Character) {
     const t = this.tickets.get(id);

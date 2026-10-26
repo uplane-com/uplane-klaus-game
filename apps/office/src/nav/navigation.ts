@@ -79,6 +79,11 @@ export class Navigation {
     agent.updateParameters({ maxSpeed, radius: AGENT_RADIUS * 0.8, separationWeight: 0.6, maxAcceleration: 14 });
   }
 
+  /** Back to the pace and spacing of `addAgent` (someone who turned back on the way home). A squeezed agent keeps its squeeze until the jam clears. */
+  setCalm(agent: CrowdAgent, maxSpeed: number, squeezed: boolean) {
+    agent.updateParameters(squeezed ? { maxSpeed, maxAcceleration: 10 } : { maxSpeed, radius: AGENT_RADIUS, separationWeight: 1.2, maxAcceleration: 10 });
+  }
+
   /** Temporarily shrink an agent so it can squeeze through a jam (and back). */
   setSqueezed(agent: CrowdAgent, squeezed: boolean) {
     agent.updateParameters(

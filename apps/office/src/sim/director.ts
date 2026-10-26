@@ -95,6 +95,8 @@ export class Director {
   private readonly workRooms: RoomLayout[];
   /** Agents on their way in (in a vehicle); they get a body when they step out. */
   private readonly arriving = new Map<string, Character>();
+  /** Agents announced again after their ride home had left: they arrive anew once that body is gone. */
+  private readonly returning = new Set<string>();
   private transport!: TransportSystem;
   private gates: Turnstiles | null = null;
 
@@ -175,18 +177,42 @@ export class Director {
 
   private onEvent(e: AgentEvent) {
     if (e.type === 'agent.started') {
-      if (e.alreadyRunning) this.spawnSeated(e.agent.id);
-      else {
-        // New agents arrive by car, bus, bike, scooter or helicopter.
-        this.arriving.set(e.agent.id, this.chars.create(e.agent.id));
-        this.transport.enqueueArrival(e.agent.id);
-      }
+      // The store reports a repeated announcement only for an agent that was stopped.
+      const here = this.actors.get(e.agent.id);
+      if (here) this.comeBack(here);
+      else if (this.arriving.has(e.agent.id)) return; // still on the way in: it steps out as an active agent
+      else if (e.alreadyRunning) this.spawnSeated(e.agent.id);
+      else this.arrive(e.agent.id);
     } else if (e.type === 'agent.stopped' && this.arriving.has(e.agentId) && this.transport.cancelArrival(e.agentId)) {
       // Stopped before their ride even left: they never show up.
       this.arriving.get(e.agentId)!.dispose();
       this.arriving.delete(e.agentId);
       this.store.remove(e.agentId);
     }
+  }
+
+  /** New agents arrive by car, bus, bike, scooter or helicopter. */
+  private arrive(id: string) {
+    this.arriving.set(id, this.chars.create(id));
+    this.transport.enqueueArrival(id);
+  }
+
+  /**
+   * An agent on its way out was announced again. It turns back while it still walks and no ride
+   * comes for it yet; otherwise it arrives anew once this body is gone.
+   */
+  private comeBack(a: Actor) {
+    const walking = !a.riding && a.body.phase !== 'fading' && !a.body.gone;
+    if (walking && (!a.ticket || this.transport.cancelDeparture(a.id))) {
+      a.ticket = null;
+      a.departSince = 0;
+      a.boardSince = 0;
+      // Outside on the plaza it walks in through the lobby again; inside this clears at once.
+      a.mustEnter = true;
+      a.body.calm();
+      return;
+    }
+    this.returning.add(a.id);
   }
 
   private spawnSeated(id: string) {
@@ -296,7 +322,8 @@ export class Director {
       }
     }
 
-    if (rec.status === 'stopped') return this.departureGoal(a);
+    // An agent announced again while its ride was already coming still leaves; it comes back with the next one.
+    if (rec.status === 'stopped' || this.returning.has(a.id)) return this.departureGoal(a);
 
     // Just arrived from the street: walk in through the lobby gates first (spread over the lanes),
     // otherwise the shortest path for east/west desks would go through a side exit.
@@ -469,7 +496,7 @@ export class Director {
     const act = a.rec.activity;
     let icon: IconName | null = null;
     if (a.delivery) icon = 'handoff';
-    else if (a.rec.status === 'stopped') icon = null;
+    else if (a.rec.status === 'stopped' || this.returning.has(a.id)) icon = null;
     else if (!a.settled) icon = 'hello';
     else if (act.kind === 'tool') icon = act.tool;
     else if (act.kind === 'idle') icon = a.away?.roomId === 'lounge' ? 'idle' : null;
@@ -497,7 +524,9 @@ export class Director {
     a.body.dispose();
     this.freeSlots.push(a.slot);
     this.actors.delete(a.id);
-    this.store.remove(a.id);
+    // Announced again after its ride had left (and not stopped since): the same record arrives anew.
+    if (this.returning.delete(a.id) && a.rec.status === 'active') this.arrive(a.id);
+    else this.store.remove(a.id);
   }
 
   /** Screen-space picking: nearest agent to a pointer position. */

@@ -54,6 +54,21 @@ export class AgentStore {
     let rec: AgentRecord | undefined;
     switch (event.type) {
       case 'agent.started': {
+        const known = this.agents.get(event.agent.id);
+        if (known) {
+          known.name = event.agent.name;
+          known.role = event.agent.role;
+          // Announcing an agent that is already here only refreshes its name and role.
+          if (known.status === 'active') return;
+          // Announced again on its way out: the same record, so its body turns back or comes back.
+          known.status = 'active';
+          known.activity = { kind: 'idle' };
+          known.activitySince = now;
+          known.task = null;
+          rec = known;
+          log(rec, 'Came back');
+          break;
+        }
         rec = {
           ...event.agent,
           status: 'active',

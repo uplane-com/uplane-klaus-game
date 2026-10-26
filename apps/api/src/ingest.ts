@@ -53,12 +53,17 @@ async function project(tx: TransactionSql, e: AgentEvent) {
   const stopAt = (ttl?: number) => (ttl ? new Date(e.ts + ttl * 1000) : null);
   switch (e.type) {
     case 'agent.started':
+      // Announcing an active agent again keeps what it does, its task and since when it is here
+      // (the office does the same); a stopped agent starts over.
       await tx`
         insert into agents (id, name, role, status, activity, activity_since, task, started_at, stopped_at, last_seen_at, stop_at)
         values (${e.agent.id}, ${e.agent.name}, ${e.agent.role}, 'active', '{"kind":"idle"}', ${ts}, null, ${ts}, null, ${ts}, ${stopAt(e.ttlSeconds)})
         on conflict (id) do update set
-          name = excluded.name, role = excluded.role, status = 'active', activity = excluded.activity,
-          activity_since = excluded.activity_since, task = null, started_at = excluded.started_at,
+          name = excluded.name, role = excluded.role, status = 'active',
+          activity = case when agents.status = 'active' then agents.activity else excluded.activity end,
+          activity_since = case when agents.status = 'active' then agents.activity_since else excluded.activity_since end,
+          task = case when agents.status = 'active' then agents.task else null end,
+          started_at = case when agents.status = 'active' then agents.started_at else excluded.started_at end,
           stopped_at = null, last_seen_at = excluded.last_seen_at, stop_at = excluded.stop_at`;
       break;
     case 'agent.task_assigned':

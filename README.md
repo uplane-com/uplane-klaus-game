@@ -92,6 +92,10 @@ await office.close(); // flush on shutdown
 
 Long idle periods: call `me.heartbeat()` every few minutes so the agent isn't timed out.
 
+Calling `me.started()` again for an agent that is still in the office only refreshes its name and role:
+it keeps its desk, task and activity. An agent that is announced again on its way out turns back, or,
+when its ride is already on the way, comes back with the next one.
+
 ### GitHub Actions as characters
 
 `POST /v1/github` takes the org webhook (events `workflow_job` and `deployment_status`,
