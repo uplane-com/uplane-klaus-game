@@ -96,6 +96,15 @@ Calling `me.started()` again for an agent that is still in the office only refre
 it keeps its desk, task and activity. An agent that is announced again on its way out turns back, or,
 when its ride is already on the way, comes back with the next one.
 
+### Uplane agent chats
+
+The Uplane backend (`uplane-app`, with `OFFICE_URL` and `OFFICE_WRITE_KEY` set) sends every chat with the
+Uplane agent, from the app or through its connector (Uplane CLI, ChatGPT, Claude), as one character in the
+Comms room: role `uplane`, agent id `chat-<conversationId>`. Each message is one task. Between messages
+the character waits (often in the coffee lounge), and it goes home 10 minutes after the last message
+(`ttlSeconds` on its last activity). The events carry the brand or workspace name and where the message
+came from, never chat text. Scheduled messages are not sent.
+
 ### GitHub Actions as characters
 
 `POST /v1/github` takes the org webhook (events `workflow_job` and `deployment_status`,

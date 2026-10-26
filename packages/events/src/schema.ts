@@ -19,6 +19,8 @@ export const RoleId = z.enum([
   // GitHub Actions (via the /v1/github webhook).
   'cicheck',
   'deployer',
+  // A chat with the Uplane agent (one character per conversation, sent by the Uplane backend).
+  'uplane',
 ]);
 export type RoleId = z.infer<typeof RoleId>;
 

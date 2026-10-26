@@ -34,6 +34,8 @@ export const ROLES: Record<RoleId, RoleDef> = {
   // GitHub Actions: checks work in Testing, deployments go to the server room.
   cicheck: { label: 'CI check', dept: 'eng', room: 'testing', pipeline: 'code' },
   deployer: { label: 'Deploy', dept: 'eng', room: 'server', pipeline: 'ops' },
+  // Uplane agent chats share the Comms room.
+  uplane: { label: 'Uplane Agent', dept: 'comms', room: 'comms', pipeline: 'comms' },
 };
 
 export const ROLE_IDS = Object.keys(ROLES) as RoleId[];
