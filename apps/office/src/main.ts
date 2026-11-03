@@ -19,6 +19,7 @@ import { SlidingDoors } from './render/slidingDoors';
 import { Turnstiles } from './render/turnstiles';
 import { TicketWall } from './render/ticketWall';
 import { Smoke } from './render/smoke';
+import { Balloon } from './render/balloon';
 import { Character, CharacterLibrary } from './render/characters';
 import { VehicleFactory } from './render/vehicles';
 import { OfficeView, loadLogo } from './render/office';
@@ -197,6 +198,7 @@ async function main() {
     transport.update(dt, simTime);
     nav.update(dt);
     const zoom = stage.camera.zoom;
+    Balloon.zoom = zoom;
     director.update(dt, THREE.MathUtils.clamp(18 + zoom * 9, 20, 46) * Math.min(window.devicePixelRatio, 2));
     demo?.update(dt);
     ticketTimer -= dt;

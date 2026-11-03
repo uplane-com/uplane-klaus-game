@@ -457,6 +457,8 @@ export class Director {
         if (goal) a.body.setGoal(goal);
       }
 
+      // On the way out, what it made floats above it on a balloon (and stays with it on a bike).
+      a.body.char.carry(a.rec.status === 'stopped' || this.returning.has(a.id) ? a.rec.asset : null);
       this.updateDelivery(a, dt);
       this.updateDeparture(a);
       this.checkGates(a);

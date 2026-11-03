@@ -1,4 +1,4 @@
-import type { Activity, AgentEvent, AgentInfo, ServiceStatus, SystemStatus, TaskRef, ToolId } from './schema';
+import type { Activity, AgentEvent, AgentInfo, ServiceStatus, SystemStatus, TaskAsset, TaskRef, ToolId } from './schema';
 
 /**
  * Tiny SDK for agents: `emit()` queues events, which are sent in batches to
@@ -61,7 +61,8 @@ export class OfficeClient {
     return {
       started: () => this.emit({ type: 'agent.started', agent: info }),
       task: (task: TaskRef) => this.emit({ type: 'agent.task_assigned', agentId, task }),
-      completed: (taskId: string) => this.emit({ type: 'agent.task_completed', agentId, taskId }),
+      /** `asset`: what the task produced; the character carries it out on a balloon. */
+      completed: (taskId: string, asset?: TaskAsset) => this.emit({ type: 'agent.task_completed', agentId, taskId, asset }),
       handoff: (toId: string, task: Pick<TaskRef, 'id' | 'title'>) =>
         this.emit({ type: 'agent.handoff', fromId: agentId, toId, taskId: task.id, taskTitle: task.title }),
       activity,

@@ -1,5 +1,5 @@
 import { ROLES, TOOL_LABELS } from '@office/events';
-import type { Activity, AgentEvent, RoleId, ServiceStatus, SystemStatus, TaskRef, Ticket } from '@office/events';
+import type { Activity, AgentEvent, RoleId, ServiceStatus, SystemStatus, TaskAsset, TaskRef, Ticket } from '@office/events';
 
 /**
  * Pure data view of all agents, built only from events. Knows nothing about
@@ -20,6 +20,8 @@ export interface AgentRecord {
   activitySince: number;
   task: TaskRef | null;
   tasksCompleted: number;
+  /** What its last finished task produced this visit; carried out on a balloon. */
+  asset: TaskAsset | null;
   startedAt: number;
   history: HistoryEntry[];
   /** Pending handoffs this agent must physically deliver. */
@@ -65,6 +67,7 @@ export class AgentStore {
           known.activity = { kind: 'idle' };
           known.activitySince = now;
           known.task = null;
+          known.asset = null;
           rec = known;
           log(rec, 'Came back');
           break;
@@ -76,6 +79,7 @@ export class AgentStore {
           activitySince: now,
           task: null,
           tasksCompleted: 0,
+          asset: null,
           startedAt: now,
           history: [],
           deliveries: [],
@@ -116,6 +120,7 @@ export class AgentStore {
         if (rec.task) log(rec, `Completed "${rec.task.title}"`);
         rec.task = null;
         rec.tasksCompleted++;
+        if (event.asset) rec.asset = event.asset;
         break;
       }
       case 'system.status': {

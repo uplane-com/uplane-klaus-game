@@ -86,11 +86,17 @@ me.task({ id: 'task-1', title: 'Fix login redirect', pipeline: 'code', stage: 'c
 me.thinking();
 me.tool('ci');            // creative: brainstorm, moodboard, photo_shoot, video_edit, image_gen; media: podcast, broadcast
 me.handoff('agent-17', { id: 'task-1', title: 'Fix login redirect' });
+me.completed('task-1', { imageUrl: 'https://cdn.uplane.com/…/ad.png', title: 'Meta ad · Summer sale' }); // asset optional
 me.stopped('done');
 await office.close(); // flush on shutdown
 ```
 
 Long idle periods: call `me.heartbeat()` every few minutes so the agent isn't timed out.
+
+What a task produced goes on `agent.task_completed` as `asset` (`imageUrl`, optional `title`): on its way out the
+character carries the picture on a balloon. The TV loads `imageUrl` itself, so it must be `https` and its host must
+send CORS headers (`Access-Control-Allow-Origin`, e.g. `*` as on `cdn.uplane.com`); a thumbnail loads fastest.
+A picture that cannot load leaves only the title on the balloon.
 
 Calling `me.started()` again for an agent that is still in the office only refreshes its name and role:
 it keeps its desk, task and activity. An agent that is announced again on its way out turns back, or,

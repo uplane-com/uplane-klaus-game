@@ -70,6 +70,19 @@ export const TaskRef = z.object({
 });
 export type TaskRef = z.infer<typeof TaskRef>;
 
+/**
+ * What a finished task produced, carried out of the office on a balloon. The TV
+ * loads the image straight from `imageUrl`, so its host must send CORS headers
+ * (`Access-Control-Allow-Origin`); a small image (a thumbnail) loads fastest.
+ */
+export const TaskAsset = z.object({
+  /** Picture of the result: the ad creative, a page screenshot, a video poster. */
+  imageUrl: z.url({ protocol: /^https$/ }).max(2000),
+  /** Short caption under the picture, e.g. the ad's name. */
+  title: z.string().min(1).max(120).optional(),
+});
+export type TaskAsset = z.infer<typeof TaskAsset>;
+
 export const AgentInfo = z.object({ id: agentId, name: z.string().min(1).max(120), role: RoleId });
 export type AgentInfo = z.infer<typeof AgentInfo>;
 
@@ -125,7 +138,7 @@ export const AgentEvent = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('agent.task_assigned'), agentId, task: TaskRef }),
   z.object({ ...base, type: z.literal('agent.activity'), agentId, activity: Activity, ttlSeconds }),
   z.object({ ...base, type: z.literal('agent.handoff'), fromId: agentId, toId: agentId, taskId: z.string().min(1).max(128), taskTitle: text }),
-  z.object({ ...base, type: z.literal('agent.task_completed'), agentId, taskId: z.string().min(1).max(128) }),
+  z.object({ ...base, type: z.literal('agent.task_completed'), agentId, taskId: z.string().min(1).max(128), asset: TaskAsset.optional() }),
   z.object({ ...base, type: z.literal('agent.heartbeat'), agentId }),
   z.object({ ...base, type: z.literal('agent.stopped'), agentId, reason: text.optional() }),
   z.object({ ...base, type: z.literal('ticket.upserted'), ticket: Ticket }),

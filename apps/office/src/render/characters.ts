@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import type { TaskAsset } from '@office/events';
 import { CHARACTER_SCALE } from '../config/scale';
 import { Rng } from '../util/rng';
 import { loadGLTF } from './assets';
+import { Balloon } from './balloon';
 
 /**
  * Character creation with per-agent variety. Every look is derived from the
@@ -148,6 +150,10 @@ export interface Pose {
 const LAP_HEIGHT = 0.42;
 const LAP_FORWARD = 0.42;
 
+/** The right hand in the arm bone's space (unscaled model units; the arm points along -x at rest). */
+const HAND_R = new THREE.Vector3(-0.27, -0.01, 0);
+const handWorld = new THREE.Vector3();
+
 const armEuler = new THREE.Euler(0, 0, 0, 'YZX');
 const tmpQuat = new THREE.Quaternion();
 
@@ -254,6 +260,7 @@ export class Character {
   private readonly phase: number;
   private opacity = 1;
   private laptop: { group: THREE.Group; screen: THREE.Mesh } | null = null;
+  private balloon: Balloon | null = null;
 
   constructor(
     id: string,
@@ -346,10 +353,30 @@ export class Character {
   private animFrame = 0;
   private animDt = 0;
 
+  /** Carry this asset out on a balloon (null lets go of it). */
+  carry(asset: TaskAsset | null) {
+    if (this.balloon?.asset === asset) return;
+    this.balloon?.dispose();
+    this.balloon = null;
+    if (!asset) return;
+    this.balloon = new Balloon(asset);
+    this.balloon.setOpacity(this.opacity);
+    this.root.add(this.balloon.group);
+  }
+
   update(dt: number, pose: Pose, t: number) {
     this.animDt += dt;
-    if (!this.smooth && Character.animEvery > 1 && (this.animFrame++ + Math.floor(this.phase)) % Character.animEvery !== 0) return;
-    dt = this.animDt;
+    const skip = !this.smooth && Character.animEvery > 1 && (this.animFrame++ + Math.floor(this.phase)) % Character.animEvery !== 0;
+    if (!skip) this.animate(pose, t);
+    // The balloon floats smoothly even when the skeleton advances only every few frames.
+    if (this.balloon) {
+      this.bones.armR.updateWorldMatrix(true, false);
+      this.balloon.update(dt, this.bones.armR.localToWorld(handWorld.copy(HAND_R)), this.root);
+    }
+  }
+
+  private animate(pose: Pose, t: number) {
+    const dt = this.animDt;
     this.animDt = 0;
     for (const [bone, q] of this.rest) bone.quaternion.copy(q);
     this.mixer.update(dt);
@@ -363,6 +390,8 @@ export class Character {
       setArm(this.bones.armL, 1, 1.35, 0.2);
       setArm(this.bones.armR, -1, 1.35, 0.2);
     }
+    // Holding the balloon string: right hand out in front, a little raised.
+    if (this.balloon) setArm(this.bones.armR, -1, 0.75, 0.35);
     this.showLaptop(!!pose.lap, !!pose.typing);
     if (pose.lap) {
       // Hands resting on the laptop keyboard, head tilted down to the screen.
@@ -430,6 +459,7 @@ export class Character {
   setOpacity(o: number) {
     if (Math.abs(o - this.opacity) < 1e-3) return;
     this.opacity = o;
+    this.balloon?.setOpacity(o);
     for (const m of this.materials) {
       m.transparent = o < 1;
       m.opacity = o;
@@ -438,6 +468,7 @@ export class Character {
   }
 
   dispose() {
+    this.carry(null);
     this.mixer.stopAllAction();
     for (const m of this.materials) m.dispose();
     this.root.removeFromParent();
